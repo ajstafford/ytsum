@@ -1,0 +1,22 @@
+[Unit]
+Description=YouTube Transcript Summarizer
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/ytsum
+ExecStart=/home/%i/ytsum/venv/bin/ytsum schedule
+Restart=on-failure
+RestartSec=300
+
+# Environment
+Environment="PATH=/home/%i/ytsum/venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ytsum
+
+[Install]
+WantedBy=multi-user.target

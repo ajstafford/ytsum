@@ -1,0 +1,353 @@
+"""Database models and operations for ytsum."""
+
+import json
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional
+
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    create_engine,
+)
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import Session, relationship, sessionmaker
+
+Base = declarative_base()
+
+
+class Channel(Base):
+    """YouTube channel to follow."""
+
+    __tablename__ = "channels"
+
+    id = Column(Integer, primary_key=True)
+    channel_id = Column(String, unique=True, nullable=False, index=True)
+    channel_name = Column(String, nullable=False)
+    channel_url = Column(String, nullable=False)
+    added_date = Column(DateTime, default=datetime.utcnow)
+    last_checked = Column(DateTime, nullable=True)
+
+    videos = relationship("Video", back_populates="channel", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Channel(name='{self.channel_name}', id='{self.channel_id}')>"
+
+
+class Video(Base):
+    """YouTube video from a followed channel."""
+
+    __tablename__ = "videos"
+
+    id = Column(Integer, primary_key=True)
+    video_id = Column(String, unique=True, nullable=False, index=True)
+    channel_id = Column(Integer, ForeignKey("channels.id"), nullable=False)
+    title = Column(String, nullable=False)
+    published_at = Column(DateTime, nullable=False)
+    duration = Column(String, nullable=True)  # ISO 8601 duration format
+    url = Column(String, nullable=False)
+    discovered_at = Column(DateTime, default=datetime.utcnow)
+
+    channel = relationship("Channel", back_populates="videos")
+    transcript = relationship("Transcript", back_populates="video", uselist=False)
+    summary = relationship("Summary", back_populates="video", uselist=False)
+
+    def __repr__(self):
+        return f"<Video(title='{self.title}', id='{self.video_id}')>"
+
+
+class Transcript(Base):
+    """Transcript for a YouTube video."""
+
+    __tablename__ = "transcripts"
+
+    id = Column(Integer, primary_key=True)
+    video_id = Column(Integer, ForeignKey("videos.id"), nullable=False, unique=True)
+    transcript_text = Column(Text, nullable=False)
+    language = Column(String, nullable=True)
+    fetched_at = Column(DateTime, default=datetime.utcnow)
+
+    video = relationship("Video", back_populates="transcript")
+
+    def __repr__(self):
+        return f"<Transcript(video_id={self.video_id}, length={len(self.transcript_text)})>"
+
+
+class Summary(Base):
+    """AI-generated summary of a video."""
+
+    __tablename__ = "summaries"
+
+    id = Column(Integer, primary_key=True)
+    video_id = Column(Integer, ForeignKey("videos.id"), nullable=False, unique=True)
+    summary_text = Column(Text, nullable=False)
+    key_points = Column(Text, nullable=True)  # JSON array of key points
+    model_used = Column(String, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    video = relationship("Video", back_populates="summary")
+
+    def get_key_points(self) -> List[str]:
+        """Parse and return key points as a list."""
+        if self.key_points:
+            return json.loads(self.key_points)
+        return []
+
+    def set_key_points(self, points: List[str]):
+        """Set key points from a list."""
+        self.key_points = json.dumps(points)
+
+    def __repr__(self):
+        return f"<Summary(video_id={self.video_id}, model='{self.model_used}')>"
+
+
+class RunHistory(Base):
+    """History of automation runs."""
+
+    __tablename__ = "run_history"
+
+    id = Column(Integer, primary_key=True)
+    run_timestamp = Column(DateTime, default=datetime.utcnow)
+    videos_found = Column(Integer, default=0)
+    videos_processed = Column(Integer, default=0)
+    errors = Column(Text, nullable=True)  # JSON array of errors
+    success = Column(Boolean, default=True)
+    duration_seconds = Column(Integer, nullable=True)
+
+    def get_errors(self) -> List[str]:
+        """Parse and return errors as a list."""
+        if self.errors:
+            return json.loads(self.errors)
+        return []
+
+    def set_errors(self, error_list: List[str]):
+        """Set errors from a list."""
+        self.errors = json.dumps(error_list)
+
+    def __repr__(self):
+        return f"<RunHistory(timestamp={self.run_timestamp}, processed={self.videos_processed})>"
+
+
+class Database:
+    """Database manager for ytsum."""
+
+    def __init__(self, db_path: Optional[Path] = None):
+        """Initialize database connection.
+
+        Args:
+            db_path: Path to SQLite database file. If None, uses default location.
+        """
+        if db_path is None:
+            db_path = Path.home() / ".local" / "share" / "ytsum" / "ytsum.db"
+
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self.db_path = db_path
+        self.engine = create_engine(f"sqlite:///{db_path}")
+        self.SessionLocal = sessionmaker(bind=self.engine)
+
+        # Create all tables
+        Base.metadata.create_all(self.engine)
+
+    def get_session(self) -> Session:
+        """Get a new database session."""
+        return self.SessionLocal()
+
+    # Channel operations
+    def add_channel(
+        self, channel_id: str, channel_name: str, channel_url: str
+    ) -> Optional[Channel]:
+        """Add a new channel to follow.
+
+        Returns:
+            The created Channel object, or None if it already exists.
+        """
+        with self.get_session() as session:
+            existing = session.query(Channel).filter_by(channel_id=channel_id).first()
+            if existing:
+                return None
+
+            channel = Channel(
+                channel_id=channel_id, channel_name=channel_name, channel_url=channel_url
+            )
+            session.add(channel)
+            session.commit()
+            session.refresh(channel)
+            return channel
+
+    def get_all_channels(self) -> List[Channel]:
+        """Get all followed channels."""
+        with self.get_session() as session:
+            return session.query(Channel).all()
+
+    def remove_channel(self, channel_id: str) -> bool:
+        """Remove a channel and all its videos.
+
+        Returns:
+            True if removed, False if not found.
+        """
+        with self.get_session() as session:
+            channel = session.query(Channel).filter_by(channel_id=channel_id).first()
+            if channel:
+                session.delete(channel)
+                session.commit()
+                return True
+            return False
+
+    def update_channel_check_time(self, channel_id: str):
+        """Update the last_checked timestamp for a channel."""
+        with self.get_session() as session:
+            channel = session.query(Channel).filter_by(channel_id=channel_id).first()
+            if channel:
+                channel.last_checked = datetime.utcnow()
+                session.commit()
+
+    # Video operations
+    def add_video(
+        self,
+        video_id: str,
+        channel_id: int,
+        title: str,
+        published_at: datetime,
+        url: str,
+        duration: Optional[str] = None,
+    ) -> Optional[Video]:
+        """Add a new video.
+
+        Returns:
+            The created Video object, or None if it already exists.
+        """
+        with self.get_session() as session:
+            existing = session.query(Video).filter_by(video_id=video_id).first()
+            if existing:
+                return None
+
+            video = Video(
+                video_id=video_id,
+                channel_id=channel_id,
+                title=title,
+                published_at=published_at,
+                url=url,
+                duration=duration,
+            )
+            session.add(video)
+            session.commit()
+            session.refresh(video)
+            return video
+
+    def get_videos_without_transcripts(self) -> List[Video]:
+        """Get all videos that don't have transcripts yet."""
+        with self.get_session() as session:
+            return session.query(Video).filter(~Video.transcript.has()).all()
+
+    def get_videos_without_summaries(self) -> List[Video]:
+        """Get all videos that have transcripts but no summaries."""
+        with self.get_session() as session:
+            return (
+                session.query(Video)
+                .filter(Video.transcript.has())
+                .filter(~Video.summary.has())
+                .all()
+            )
+
+    def get_recent_videos(self, limit: int = 20) -> List[Video]:
+        """Get recent videos ordered by published date."""
+        with self.get_session() as session:
+            return (
+                session.query(Video).order_by(Video.published_at.desc()).limit(limit).all()
+            )
+
+    # Transcript operations
+    def add_transcript(
+        self, video_id: int, transcript_text: str, language: Optional[str] = None
+    ) -> Transcript:
+        """Add a transcript for a video."""
+        with self.get_session() as session:
+            transcript = Transcript(
+                video_id=video_id, transcript_text=transcript_text, language=language
+            )
+            session.add(transcript)
+            session.commit()
+            session.refresh(transcript)
+            return transcript
+
+    # Summary operations
+    def add_summary(
+        self, video_id: int, summary_text: str, key_points: List[str], model_used: str
+    ) -> Summary:
+        """Add a summary for a video."""
+        with self.get_session() as session:
+            summary = Summary(
+                video_id=video_id, summary_text=summary_text, model_used=model_used
+            )
+            summary.set_key_points(key_points)
+            session.add(summary)
+            session.commit()
+            session.refresh(summary)
+            return summary
+
+    def get_summaries_with_videos(self, limit: int = 20) -> List[tuple]:
+        """Get recent summaries with their video information.
+
+        Returns:
+            List of (Video, Summary) tuples.
+        """
+        with self.get_session() as session:
+            results = (
+                session.query(Video, Summary)
+                .join(Summary)
+                .order_by(Summary.created_at.desc())
+                .limit(limit)
+                .all()
+            )
+            return results
+
+    # Run history operations
+    def add_run_history(
+        self,
+        videos_found: int,
+        videos_processed: int,
+        errors: Optional[List[str]] = None,
+        success: bool = True,
+        duration_seconds: Optional[int] = None,
+    ) -> RunHistory:
+        """Add a run history entry."""
+        with self.get_session() as session:
+            run = RunHistory(
+                videos_found=videos_found,
+                videos_processed=videos_processed,
+                success=success,
+                duration_seconds=duration_seconds,
+            )
+            if errors:
+                run.set_errors(errors)
+            session.add(run)
+            session.commit()
+            session.refresh(run)
+            return run
+
+    def get_run_history(self, limit: int = 50) -> List[RunHistory]:
+        """Get recent run history."""
+        with self.get_session() as session:
+            return (
+                session.query(RunHistory).order_by(RunHistory.run_timestamp.desc()).limit(limit).all()
+            )
+
+    def get_stats(self) -> dict:
+        """Get database statistics."""
+        with self.get_session() as session:
+            return {
+                "total_channels": session.query(Channel).count(),
+                "total_videos": session.query(Video).count(),
+                "videos_with_transcripts": session.query(Transcript).count(),
+                "videos_with_summaries": session.query(Summary).count(),
+                "total_runs": session.query(RunHistory).count(),
+                "last_run": session.query(RunHistory)
+                .order_by(RunHistory.run_timestamp.desc())
+                .first(),
+            }

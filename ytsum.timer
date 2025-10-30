@@ -1,0 +1,12 @@
+[Unit]
+Description=YouTube Transcript Summarizer Timer
+Requires=ytsum.service
+
+[Timer]
+# Run daily at 8:00 AM
+OnCalendar=daily
+OnCalendar=*-*-* 08:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
