@@ -7,7 +7,7 @@ from rich.table import Table
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     Button,
     DataTable,
@@ -15,13 +15,76 @@ from textual.widgets import (
     Header,
     Input,
     Label,
+    Markdown,
     Static,
     TabbedContent,
     TabPane,
 )
 
+from sqlalchemy.orm import joinedload
+
 from .config import get_config
 from .database import Channel, Database, Video
+
+
+class SummaryScreen(ModalScreen):
+    """Modal screen to display video summary."""
+
+    BINDINGS = [
+        ("escape", "dismiss", "Close"),
+        ("q", "dismiss", "Close"),
+    ]
+
+    def __init__(self, title: str, channel: str, published: str, url: str,
+                 summary: str, key_points: list):
+        super().__init__()
+        self.video_title = title
+        self.channel = channel
+        self.published = published
+        self.url = url
+        self.summary = summary
+        self.key_points = key_points
+
+    def compose(self) -> ComposeResult:
+        """Create the summary display."""
+        # Build markdown content
+        key_points_md = "\n".join([f"{i}. {point}" for i, point in enumerate(self.key_points, 1)])
+
+        content = f"""# {self.video_title}
+
+**Channel:** {self.channel}
+**Published:** {self.published}
+**URL:** {self.url}
+
+---
+
+## Summary
+
+{self.summary}
+
+---
+
+## Key Points
+
+{key_points_md}
+
+---
+
+*Press ESC or Q to close*
+"""
+        with Container(id="summary_container"):
+            with VerticalScroll():
+                yield Markdown(content, id="summary_markdown")
+            yield Button("Close", variant="primary", id="close_btn")
+
+    @on(Button.Pressed, "#close_btn")
+    def close_summary(self):
+        """Close the summary screen."""
+        self.dismiss()
+
+    def action_dismiss(self):
+        """Close the modal."""
+        self.dismiss()
 
 
 class StatsPanel(Static):
@@ -158,12 +221,17 @@ class VideosTab(VerticalScroll):
     def compose(self) -> ComposeResult:
         """Create child widgets."""
         yield Label("Recent Videos & Summaries", classes="section-title")
-        yield Button("Refresh", id="refresh_videos_btn", variant="primary")
+        yield Label("Use ↑↓ arrows to navigate, press 's' to view summary", classes="hint")
+        with Horizontal(classes="button-row"):
+            yield Button("Refresh", id="refresh_videos_btn", variant="primary")
+            yield Button("View Summary", id="view_summary_btn", variant="success")
         yield DataTable(id="videos_table")
 
     def on_mount(self) -> None:
         """Set up the videos table when mounted."""
         table = self.query_one("#videos_table", DataTable)
+        table.cursor_type = "row"
+        table.zebra_stripes = True
         table.add_columns("Title", "Channel", "Published", "Has Summary")
         self.refresh_videos()
 
@@ -191,30 +259,77 @@ class VideosTab(VerticalScroll):
         self.refresh_videos()
         self.notify("Videos refreshed", timeout=1)
 
+    @on(Button.Pressed, "#view_summary_btn")
+    def on_view_summary_pressed(self) -> None:
+        """Handle view summary button press."""
+        table = self.query_one("#videos_table", DataTable)
+        if table.cursor_row is not None:
+            try:
+                rows = list(table.rows.keys())
+                if table.cursor_row < len(rows):
+                    row_key = rows[table.cursor_row]
+                    video_id = int(row_key.value)
+                    self.show_video_summary(video_id)
+            except Exception as e:
+                self.notify(f"Error: {e}", severity="error")
+        else:
+            self.notify("Please select a video first", severity="warning")
+
+    def show_video_summary(self, video_id: int) -> None:
+        """Display summary for a video."""
+        with self.db.get_session() as session:
+            # Eagerly load relationships before closing session
+            video = (
+                session.query(Video)
+                .options(joinedload(Video.channel), joinedload(Video.summary))
+                .filter_by(id=video_id)
+                .first()
+            )
+
+            if not video:
+                self.notify("Video not found", severity="error")
+                return
+
+            # Check if summary exists before expunging
+            has_summary = video.summary is not None
+
+            if has_summary:
+                # Access all data we need before expunging
+                title = video.title
+                channel_name = video.channel.channel_name
+                published = video.published_at.strftime('%Y-%m-%d')
+                url = video.url
+                summary_text = video.summary.summary_text
+                key_points = video.summary.get_key_points()
+
+                # Now expunge
+                session.expunge_all()
+
+                # Push the summary screen
+                self.app.push_screen(
+                    SummaryScreen(
+                        title=title,
+                        channel=channel_name,
+                        published=published,
+                        url=url,
+                        summary=summary_text,
+                        key_points=key_points
+                    )
+                )
+            else:
+                self.notify("No summary available for this video", severity="warning", timeout=3)
+
     @on(DataTable.RowSelected, "#videos_table")
     def on_video_selected(self, event: DataTable.RowSelected) -> None:
         """Handle video selection - show summary if available."""
         video_id = int(event.row_key.value)
-        with self.db.get_session() as session:
-            video = session.query(Video).filter_by(id=video_id).first()
-            if video and video.summary:
-                summary_text = f"""
-Title: {video.title}
-Channel: {video.channel.channel_name}
-Published: {video.published_at.strftime('%Y-%m-%d')}
-URL: {video.url}
+        self.show_video_summary(video_id)
 
-Summary:
-{video.summary.summary_text}
-
-Key Points:
-"""
-                for i, point in enumerate(video.summary.get_key_points(), 1):
-                    summary_text += f"{i}. {point}\n"
-
-                self.notify(summary_text, timeout=10)
-            else:
-                self.notify("No summary available for this video", severity="warning")
+    def on_key(self, event) -> None:
+        """Handle key presses."""
+        if event.key == "s":
+            # Same as clicking View Summary button
+            self.on_view_summary_pressed()
 
 
 class HistoryTab(VerticalScroll):
@@ -350,7 +465,18 @@ class YTSumApp(App):
         padding: 1 0;
     }
 
+    .hint {
+        color: $text-muted;
+        padding: 0 0 1 0;
+        text-style: italic;
+    }
+
     .input-group {
+        height: auto;
+        padding: 1 0;
+    }
+
+    .button-row {
         height: auto;
         padding: 1 0;
     }
@@ -372,6 +498,33 @@ class YTSumApp(App):
         padding: 1;
         border: solid $primary;
         margin: 1;
+    }
+
+    SummaryScreen {
+        align: center middle;
+    }
+
+    #summary_container {
+        width: 90%;
+        height: 90%;
+        background: $surface;
+        border: thick $primary;
+        padding: 1;
+    }
+
+    #summary_container VerticalScroll {
+        width: 100%;
+        height: 1fr;
+        margin-bottom: 1;
+    }
+
+    #summary_markdown {
+        padding: 1;
+    }
+
+    #close_btn {
+        width: 20;
+        dock: bottom;
     }
     """
 

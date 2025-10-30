@@ -192,25 +192,29 @@ class YouTubeClient:
             Tuple of (transcript_text, language_code) or None if unavailable.
         """
         try:
-            # Try to get transcript (prefers English, but will take any available)
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+            # Create API instance
+            api = YouTubeTranscriptApi()
 
             # Try to get English transcript first
             try:
-                transcript = transcript_list.find_transcript(["en"])
-            except NoTranscriptFound:
-                # Fall back to first available transcript
-                transcript = transcript_list.find_generated_transcript(
-                    transcript_list._generated_transcripts.keys()
-                )
+                transcript_result = api.fetch(video_id, languages=['en'])
+            except:
+                # Fall back to any available transcript
+                try:
+                    transcript_result = api.fetch(video_id)
+                except:
+                    # No transcript available
+                    logger.warning(f"No transcript found for video {video_id}")
+                    return None
 
-            # Fetch the transcript
-            transcript_data = transcript.fetch()
+            # Extract language code
+            language = transcript_result.language_code if hasattr(transcript_result, 'language_code') else 'unknown'
 
-            # Combine all text segments
-            full_text = " ".join([item["text"] for item in transcript_data])
+            # Combine all text segments from the transcript snippets
+            # The result is iterable and contains FetchedTranscriptSnippet objects
+            full_text = " ".join([snippet.text for snippet in transcript_result])
 
-            return (full_text, transcript.language_code)
+            return (full_text, language)
 
         except TranscriptsDisabled:
             logger.warning(f"Transcripts are disabled for video {video_id}")

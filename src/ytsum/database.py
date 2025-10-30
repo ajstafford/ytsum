@@ -16,7 +16,7 @@ from sqlalchemy import (
     create_engine,
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, relationship, sessionmaker
+from sqlalchemy.orm import Session, relationship, sessionmaker, joinedload
 
 Base = declarative_base()
 
@@ -183,7 +183,9 @@ class Database:
     def get_all_channels(self) -> List[Channel]:
         """Get all followed channels."""
         with self.get_session() as session:
-            return session.query(Channel).all()
+            channels = session.query(Channel).all()
+            session.expunge_all()
+            return channels
 
     def remove_channel(self, channel_id: str) -> bool:
         """Remove a channel and all its videos.
@@ -243,24 +245,36 @@ class Database:
     def get_videos_without_transcripts(self) -> List[Video]:
         """Get all videos that don't have transcripts yet."""
         with self.get_session() as session:
-            return session.query(Video).filter(~Video.transcript.has()).all()
+            videos = session.query(Video).filter(~Video.transcript.has()).all()
+            session.expunge_all()
+            return videos
 
     def get_videos_without_summaries(self) -> List[Video]:
         """Get all videos that have transcripts but no summaries."""
         with self.get_session() as session:
-            return (
+            videos = (
                 session.query(Video)
+                .options(joinedload(Video.transcript))
                 .filter(Video.transcript.has())
                 .filter(~Video.summary.has())
                 .all()
             )
+            session.expunge_all()
+            return videos
 
     def get_recent_videos(self, limit: int = 20) -> List[Video]:
         """Get recent videos ordered by published date."""
         with self.get_session() as session:
-            return (
-                session.query(Video).order_by(Video.published_at.desc()).limit(limit).all()
+            videos = (
+                session.query(Video)
+                .options(joinedload(Video.channel), joinedload(Video.summary))
+                .order_by(Video.published_at.desc())
+                .limit(limit)
+                .all()
             )
+            # Detach from session to avoid lazy loading issues
+            session.expunge_all()
+            return videos
 
     # Transcript operations
     def add_transcript(
@@ -301,10 +315,12 @@ class Database:
             results = (
                 session.query(Video, Summary)
                 .join(Summary)
+                .options(joinedload(Video.channel))
                 .order_by(Summary.created_at.desc())
                 .limit(limit)
                 .all()
             )
+            session.expunge_all()
             return results
 
     # Run history operations
@@ -334,20 +350,24 @@ class Database:
     def get_run_history(self, limit: int = 50) -> List[RunHistory]:
         """Get recent run history."""
         with self.get_session() as session:
-            return (
+            history = (
                 session.query(RunHistory).order_by(RunHistory.run_timestamp.desc()).limit(limit).all()
             )
+            session.expunge_all()
+            return history
 
     def get_stats(self) -> dict:
         """Get database statistics."""
         with self.get_session() as session:
+            last_run = session.query(RunHistory).order_by(RunHistory.run_timestamp.desc()).first()
+            if last_run:
+                session.expunge(last_run)
+
             return {
                 "total_channels": session.query(Channel).count(),
                 "total_videos": session.query(Video).count(),
                 "videos_with_transcripts": session.query(Transcript).count(),
                 "videos_with_summaries": session.query(Summary).count(),
                 "total_runs": session.query(RunHistory).count(),
-                "last_run": session.query(RunHistory)
-                .order_by(RunHistory.run_timestamp.desc())
-                .first(),
+                "last_run": last_run,
             }
