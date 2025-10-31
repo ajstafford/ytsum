@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Videos - ytsum{% endblock %}
+
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-play-circle"></i> Videos</h1>
+
+<!-- Search and Filter -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('videos') }}">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="search" class="form-label">Search</label>
+                    <input type="text" class="form-control" id="search" name="search"
+                           value="{{ search }}" placeholder="Search by title or channel name">
+                </div>
+                <div class="col-md-4">
+                    <label for="has_summary" class="form-label">Filter by Summary</label>
+                    <select class="form-select" id="has_summary" name="has_summary">
+                        <option value="all" {% if has_summary == 'all' %}selected{% endif %}>All Videos</option>
+                        <option value="yes" {% if has_summary == 'yes' %}selected{% endif %}>With Summary</option>
+                        <option value="no" {% if has_summary == 'no' %}selected{% endif %}>Without Summary</option>
+                    </select>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-search"></i> Filter
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Videos List -->
+{% if videos %}
+<div class="list-group mb-4">
+    {% for video in videos %}
+    <div class="list-group-item">
+        <div class="d-flex w-100 justify-content-between align-items-start">
+            <div class="flex-grow-1">
+                <h5 class="mb-1">
+                    {% if video.summary %}
+                        <span class="badge bg-success me-2" title="Has summary">
+                            <i class="bi bi-check-circle"></i>
+                        </span>
+                    {% else %}
+                        <span class="badge bg-secondary me-2" title="No summary">
+                            <i class="bi bi-x-circle"></i>
+                        </span>
+                    {% endif %}
+                    {{ video.title }}
+                </h5>
+                <p class="mb-1 text-muted">
+                    <i class="bi bi-person-circle"></i> {{ video.channel.channel_name }} •
+                    <i class="bi bi-calendar"></i> {{ video.published_at.strftime('%Y-%m-%d') }}
+                </p>
+            </div>
+            <div class="btn-group ms-3" role="group">
+                <a href="{{ video.url }}" target="_blank" class="btn btn-sm btn-outline-primary" title="Watch on YouTube">
+                    <i class="bi bi-youtube"></i>
+                </a>
+                {% if video.summary %}
+                <a href="{{ url_for('summary', video_id=video.id) }}" class="btn btn-sm btn-primary" title="View summary">
+                    <i class="bi bi-file-text"></i> Summary
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<nav>
+    <ul class="pagination justify-content-center">
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('videos', search=search, has_summary=has_summary, page=page-1) }}">
+                Previous
+            </a>
+        </li>
+
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+                <li class="page-item active"><span class="page-link">{{ p }}</span></li>
+            {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                <li class="page-item">
+                    <a class="page-link" href="{{ url_for('videos', search=search, has_summary=has_summary, page=p) }}">
+                        {{ p }}
+                    </a>
+                </li>
+            {% elif p == page - 3 or p == page + 3 %}
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+            {% endif %}
+        {% endfor %}
+
+        <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+            <a class="page-link" href="{{ url_for('videos', search=search, has_summary=has_summary, page=page+1) }}">
+                Next
+            </a>
+        </li>
+    </ul>
+</nav>
+{% endif %}
+
+{% else %}
+<div class="alert alert-secondary">
+    <i class="bi bi-inbox"></i> No videos found. Try adjusting your filters or add some channels!
+</div>
+{% endif %}
+
+{% endblock %}

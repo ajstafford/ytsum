@@ -1,0 +1,248 @@
+"""Web interface for ytsum using Flask."""
+
+import logging
+from datetime import datetime
+
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from sqlalchemy.orm import joinedload
+
+from .config import get_config
+from .database import Database, Video
+from .youtube import YouTubeClient
+
+logger = logging.getLogger(__name__)
+
+
+def create_app(db_path=None):
+    """Create and configure the Flask application."""
+    app = Flask(__name__)
+    app.secret_key = "ytsum-secret-key-change-in-production"
+
+    # Load config
+    config = get_config()
+
+    # Initialize database
+    db = Database(db_path or config.database_path)
+
+    @app.route("/")
+    def index():
+        """Dashboard page."""
+        stats = db.get_stats()
+
+        # Get recent summaries
+        recent_summaries = db.get_summaries_with_videos(limit=10)
+
+        return render_template(
+            "dashboard.html",
+            stats=stats,
+            recent_summaries=recent_summaries,
+        )
+
+    @app.route("/channels")
+    def channels():
+        """Channels management page."""
+        channels_list = db.get_all_channels()
+        return render_template("channels.html", channels=channels_list)
+
+    @app.route("/channels/add", methods=["POST"])
+    def add_channel():
+        """Add a new channel."""
+        channel_input = request.form.get("channel_input", "").strip()
+
+        if not channel_input:
+            flash("Please enter a channel URL or ID", "warning")
+            return redirect(url_for("channels"))
+
+        try:
+            yt_client = YouTubeClient(config.youtube_api_key)
+
+            # Extract channel ID if it's a URL
+            channel_id = yt_client.extract_channel_id(channel_input)
+            if not channel_id:
+                channel_id = channel_input
+
+            # Get channel info
+            channel_info = yt_client.get_channel_info(channel_id)
+
+            if not channel_info:
+                flash("Channel not found. Please check the URL or ID.", "danger")
+                return redirect(url_for("channels"))
+
+            # Add to database
+            result = db.add_channel(
+                channel_info["id"], channel_info["name"], channel_info["url"]
+            )
+
+            if result:
+                flash(f"Added channel: {channel_info['name']}", "success")
+            else:
+                flash("Channel already exists", "warning")
+
+        except Exception as e:
+            logger.error(f"Error adding channel: {e}")
+            flash(f"Error adding channel: {str(e)}", "danger")
+
+        return redirect(url_for("channels"))
+
+    @app.route("/channels/delete/<channel_id>", methods=["POST"])
+    def delete_channel(channel_id):
+        """Delete a channel."""
+        try:
+            if db.remove_channel(channel_id):
+                flash("Channel removed successfully", "success")
+            else:
+                flash("Channel not found", "warning")
+        except Exception as e:
+            logger.error(f"Error deleting channel: {e}")
+            flash(f"Error deleting channel: {str(e)}", "danger")
+
+        return redirect(url_for("channels"))
+
+    @app.route("/videos")
+    def videos():
+        """Videos list page."""
+        # Get filter parameters
+        search = request.args.get("search", "").strip()
+        has_summary = request.args.get("has_summary", "all")
+        page = int(request.args.get("page", 1))
+        per_page = 50
+
+        # Get videos
+        with db.get_session() as session:
+            query = (
+                session.query(Video)
+                .options(joinedload(Video.channel), joinedload(Video.summary))
+                .order_by(Video.published_at.desc())
+            )
+
+            # Apply filters
+            if search:
+                query = query.filter(
+                    Video.title.contains(search) | Video.channel.has(channel_name=search)
+                )
+
+            if has_summary == "yes":
+                query = query.filter(Video.summary.has())
+            elif has_summary == "no":
+                query = query.filter(~Video.summary.has())
+
+            # Pagination
+            total = query.count()
+            videos_list = query.offset((page - 1) * per_page).limit(per_page).all()
+            session.expunge_all()
+
+        total_pages = (total + per_page - 1) // per_page
+
+        return render_template(
+            "videos.html",
+            videos=videos_list,
+            search=search,
+            has_summary=has_summary,
+            page=page,
+            total_pages=total_pages,
+        )
+
+    @app.route("/summary/<int:video_id>")
+    def summary(video_id):
+        """Individual summary view page."""
+        with db.get_session() as session:
+            video = (
+                session.query(Video)
+                .options(joinedload(Video.channel), joinedload(Video.summary))
+                .filter_by(id=video_id)
+                .first()
+            )
+
+            if not video:
+                flash("Video not found", "danger")
+                return redirect(url_for("videos"))
+
+            # Extract data before expunging
+            video_data = {
+                "id": video.id,
+                "title": video.title,
+                "url": video.url,
+                "published_at": video.published_at,
+                "channel_name": video.channel.channel_name,
+                "has_summary": video.summary is not None,
+            }
+
+            if video.summary:
+                video_data["summary_text"] = video.summary.summary_text
+                video_data["key_points"] = video.summary.get_key_points()
+                video_data["model_used"] = video.summary.model_used
+                video_data["created_at"] = video.summary.created_at
+
+            session.expunge_all()
+
+        return render_template("summary.html", video=video_data)
+
+    @app.route("/history")
+    def history():
+        """Run history page."""
+        history_list = db.get_run_history(limit=100)
+        return render_template("history.html", history=history_list)
+
+    @app.route("/run", methods=["POST"])
+    def run_check():
+        """Trigger a manual run."""
+        try:
+            from .scheduler import check_and_process
+
+            flash("Starting check and process... This may take a few minutes.", "info")
+
+            # Run in background (simple approach - could be improved with Celery)
+            result = check_and_process(db, config)
+
+            flash(
+                f"Processing complete! Found: {result['videos_found']}, "
+                f"Processed: {result['videos_processed']}",
+                "success",
+            )
+
+            if result["errors"]:
+                flash(f"Encountered {len(result['errors'])} errors", "warning")
+
+        except Exception as e:
+            logger.error(f"Error running check: {e}")
+            flash(f"Error running check: {str(e)}", "danger")
+
+        return redirect(url_for("index"))
+
+    @app.route("/api/stats")
+    def api_stats():
+        """API endpoint for stats (for AJAX updates)."""
+        stats = db.get_stats()
+        return jsonify(
+            {
+                "total_channels": stats["total_channels"],
+                "total_videos": stats["total_videos"],
+                "videos_with_transcripts": stats["videos_with_transcripts"],
+                "videos_with_summaries": stats["videos_with_summaries"],
+                "total_runs": stats["total_runs"],
+            }
+        )
+
+    # Error handlers
+    @app.errorhandler(404)
+    def not_found(e):
+        return render_template("404.html"), 404
+
+    @app.errorhandler(500)
+    def server_error(e):
+        logger.error(f"Server error: {e}")
+        return render_template("500.html"), 500
+
+    return app
+
+
+def run_web_server(host="0.0.0.0", port=5000, debug=False):
+    """Run the Flask web server.
+
+    Args:
+        host: Host to bind to (0.0.0.0 for all interfaces).
+        port: Port to listen on.
+        debug: Enable debug mode.
+    """
+    app = create_app()
+    app.run(host=host, port=port, debug=debug)

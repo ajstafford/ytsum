@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Channels - ytsum{% endblock %}
+
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-collection"></i> Channels</h1>
+
+<!-- Add Channel Form -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Add New Channel</h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('add_channel') }}">
+            <div class="row g-3 align-items-end">
+                <div class="col-md-9">
+                    <label for="channel_input" class="form-label">Channel URL or ID</label>
+                    <input type="text" class="form-control" id="channel_input" name="channel_input"
+                           placeholder="https://www.youtube.com/@channelname or UC..." required>
+                    <div class="form-text">
+                        Supported formats: Channel URL, Custom URL (@username), or Channel ID (UC...)
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="bi bi-plus-lg"></i> Add Channel
+                    </button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Channels List -->
+<h2 class="mb-3">Following {{ channels|length }} Channel{% if channels|length != 1 %}s{% endif %}</h2>
+
+{% if channels %}
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Channel Name</th>
+                <th>Channel ID</th>
+                <th>Added</th>
+                <th>Last Checked</th>
+                <th class="text-end">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for channel in channels %}
+            <tr>
+                <td>
+                    <a href="{{ channel.channel_url }}" target="_blank" class="text-decoration-none">
+                        <i class="bi bi-youtube"></i> {{ channel.channel_name }}
+                    </a>
+                </td>
+                <td><code>{{ channel.channel_id }}</code></td>
+                <td>{{ channel.added_date.strftime('%Y-%m-%d') }}</td>
+                <td>
+                    {% if channel.last_checked %}
+                        {{ channel.last_checked.strftime('%Y-%m-%d %H:%M') }}
+                    {% else %}
+                        <span class="text-muted">Never</span>
+                    {% endif %}
+                </td>
+                <td class="text-end">
+                    <form method="POST" action="{{ url_for('delete_channel', channel_id=channel.channel_id) }}" class="d-inline"
+                          onsubmit="return confirm('Are you sure you want to remove this channel? This will also delete all associated videos.');">
+                        <button type="submit" class="btn btn-sm btn-danger">
+                            <i class="bi bi-trash"></i> Remove
+                        </button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="alert alert-secondary">
+    <i class="bi bi-inbox"></i> No channels yet. Add your first channel above!
+</div>
+{% endif %}
+{% endblock %}

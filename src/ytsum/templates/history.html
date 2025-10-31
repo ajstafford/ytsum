@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Run History - ytsum{% endblock %}
+
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-clock-history"></i> Run History</h1>
+
+{% if history %}
+<div class="table-responsive">
+    <table class="table table-hover">
+        <thead>
+            <tr>
+                <th>Timestamp</th>
+                <th class="text-center">Videos Found</th>
+                <th class="text-center">Processed</th>
+                <th class="text-center">Duration</th>
+                <th class="text-center">Status</th>
+                <th>Errors</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in history %}
+            <tr>
+                <td>{{ run.run_timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td class="text-center">
+                    <span class="badge bg-info">{{ run.videos_found }}</span>
+                </td>
+                <td class="text-center">
+                    <span class="badge bg-success">{{ run.videos_processed }}</span>
+                </td>
+                <td class="text-center">
+                    {% if run.duration_seconds %}
+                        {{ run.duration_seconds }}s
+                    {% else %}
+                        <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+                <td class="text-center">
+                    {% if run.success %}
+                        <span class="badge bg-success"><i class="bi bi-check-circle"></i> Success</span>
+                    {% else %}
+                        <span class="badge bg-danger"><i class="bi bi-x-circle"></i> Failed</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if run.errors %}
+                        {% set error_list = run.get_errors() %}
+                        {% if error_list %}
+                            <button class="btn btn-sm btn-warning" type="button" data-bs-toggle="collapse"
+                                    data-bs-target="#errors-{{ loop.index }}">
+                                <i class="bi bi-exclamation-triangle"></i> {{ error_list|length }} error(s)
+                            </button>
+                            <div class="collapse mt-2" id="errors-{{ loop.index }}">
+                                <ul class="list-unstyled mb-0 small">
+                                    {% for error in error_list %}
+                                    <li class="text-danger">• {{ error }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    {% else %}
+                        <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Summary Stats -->
+<div class="card mt-4">
+    <div class="card-body">
+        <h5 class="card-title">Summary</h5>
+        <div class="row text-center">
+            <div class="col-md-3">
+                <h3 class="text-primary">{{ history|length }}</h3>
+                <p class="text-muted">Total Runs</p>
+            </div>
+            <div class="col-md-3">
+                <h3 class="text-success">{{ history|selectattr('success')|list|length }}</h3>
+                <p class="text-muted">Successful</p>
+            </div>
+            <div class="col-md-3">
+                <h3 class="text-danger">{{ history|rejectattr('success')|list|length }}</h3>
+                <p class="text-muted">Failed</p>
+            </div>
+            <div class="col-md-3">
+                <h3 class="text-info">{{ history|sum(attribute='videos_processed') }}</h3>
+                <p class="text-muted">Videos Processed</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="alert alert-secondary">
+    <i class="bi bi-inbox"></i> No run history yet. Run a check to see results here!
+</div>
+{% endif %}
+
+{% endblock %}

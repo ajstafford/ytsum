@@ -7,6 +7,7 @@ Automated tool to fetch YouTube video transcripts from channels you follow and g
 - **Channel Management**: Follow YouTube channels and automatically track new videos
 - **Transcript Fetching**: Automatically fetch transcripts for new videos
 - **AI Summarization**: Generate concise summaries with key takeaways using OpenRouter (Claude, GPT, Llama, etc.)
+- **Web Interface**: Modern web UI accessible from any device on your network
 - **Terminal UI**: Beautiful TUI for managing channels, viewing summaries, and checking run history
 - **Daily Automation**: Systemd service for automatic daily checks
 - **Run History**: Track all processing runs with detailed statistics
@@ -112,6 +113,41 @@ Navigation:
 - `q`: Quit
 - `d`: Toggle dark mode
 - `r`: Run manual check (from home screen)
+
+### Launch Web Interface
+
+```bash
+ytsum web
+```
+
+The web interface will start on `http://0.0.0.0:5000` (accessible from any device on your network).
+
+**Custom Options:**
+```bash
+# Custom port
+ytsum web --port 8080
+
+# Localhost only (not accessible from network)
+ytsum web --host 127.0.0.1
+
+# Enable debug mode
+ytsum web --debug
+```
+
+**Access the Web UI:**
+- From the same device: `http://localhost:5000`
+- From another device on your network: `http://YOUR_PI_IP:5000`
+  - Find your Pi's IP: `hostname -I`
+  - Example: `http://192.168.1.100:5000`
+
+**Web Interface Features:**
+- **Dashboard**: View stats, recent summaries at a glance
+- **Channels**: Add/remove channels with a simple form
+- **Videos**: Browse, search, and filter videos with pagination
+- **Summary View**: Read full summaries with proper formatting and scrolling
+- **History**: View all automation runs with error details
+- **Manual Run**: Trigger processing with a button click
+- **Responsive**: Works on desktop, tablet, and mobile
 
 ### Command Line Usage
 
@@ -320,7 +356,9 @@ MIT License - feel free to modify and use as needed.
 ## Credits
 
 Built with:
+- [Flask](https://flask.palletsprojects.com/) - Web framework
 - [Textual](https://textual.textualize.io/) - TUI framework
+- [Bootstrap](https://getbootstrap.com/) - Web UI styling
 - [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api) - Transcript fetching
 - [Google YouTube API](https://developers.google.com/youtube/v3) - Channel/video data
 - [OpenRouter](https://openrouter.ai/) - LLM API gateway
@@ -330,15 +368,37 @@ Built with:
 
 For issues, questions, or feature requests, please open an issue on GitHub.
 
-## Roadmap
+## Enhancement Backlog
 
-Potential future enhancements:
-- [ ] Web UI option (in addition to TUI)
-- [ ] Email/notification system for new summaries
-- [ ] Export summaries to Markdown/PDF
-- [ ] Support for video playlists
-- [ ] Custom prompt templates for summaries
-- [ ] Multiple summary styles (brief, detailed, bullet points)
-- [ ] Search functionality within summaries
-- [ ] Tags/categories for videos
-- [ ] RSS feed generation from summaries
+Potential future enhancements (prioritized):
+
+### High Priority
+- [ ] **Mark as Read/Favorite**: Flag videos you've watched or want to save
+- [ ] **Full-text search**: Search across all summaries and transcripts
+- [ ] **Video notes**: Add personal notes to summaries
+- [ ] **Background processing**: Run check/process in background without blocking web UI
+- [ ] **Export summaries**: Export to Markdown, PDF, or plain text files
+
+### Medium Priority
+- [ ] **Email/notification system**: Get notified when new summaries are available
+- [ ] **Custom prompt templates**: Define your own summarization prompts
+- [ ] **Multiple summary styles**: Choose between brief, detailed, or bullet-point formats
+- [ ] **Tags/categories**: Organize videos with custom tags
+- [ ] **Video playlists support**: Follow entire YouTube playlists
+- [ ] **Channel groups**: Organize channels into groups (Tech, News, Education, etc.)
+
+### Low Priority / Nice-to-Have
+- [ ] **RSS feed generation**: Generate RSS feeds from summaries
+- [ ] **API endpoint**: REST API for integration with other tools
+- [ ] **Dark mode toggle**: UI theme switcher in web interface
+- [ ] **Statistics dashboard**: Charts showing viewing patterns, most summarized channels
+- [ ] **Transcript viewer**: View full transcripts inline with timestamps
+- [ ] **Multi-language support**: Transcripts in multiple languages
+- [ ] **Share summaries**: Generate shareable links to summaries
+- [ ] **Batch operations**: Process/delete multiple videos at once
+
+### Completed
+- [x] **Web UI option**: Modern web interface with Bootstrap
+- [x] **TUI interface**: Terminal-based interface with Textual
+- [x] **Daily automation**: Systemd service for scheduled runs
+- [x] **Search and filter videos**: By channel, summary status, etc.

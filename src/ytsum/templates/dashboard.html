@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - ytsum{% endblock %}
+
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-speedometer2"></i> Dashboard</h1>
+
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-collection"></i> Channels</h5>
+                <p class="card-text display-6">{{ stats.total_channels }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-play-circle"></i> Videos</h5>
+                <p class="card-text display-6">{{ stats.total_videos }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-file-text"></i> Transcripts</h5>
+                <p class="card-text display-6">{{ stats.videos_with_transcripts }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title"><i class="bi bi-stars"></i> Summaries</h5>
+                <p class="card-text display-6">{{ stats.videos_with_summaries }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Last Run Info -->
+{% if stats.last_run %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i>
+    Last run: {{ stats.last_run.run_timestamp.strftime('%Y-%m-%d %H:%M:%S') }} -
+    Processed {{ stats.last_run.videos_processed }} videos
+    {% if stats.last_run.success %}
+        <span class="badge bg-success">Success</span>
+    {% else %}
+        <span class="badge bg-danger">Failed</span>
+    {% endif %}
+</div>
+{% endif %}
+
+<!-- Recent Summaries -->
+<h2 class="mb-3"><i class="bi bi-clock-history"></i> Recent Summaries</h2>
+
+{% if recent_summaries %}
+<div class="list-group">
+    {% for video, summary in recent_summaries %}
+    <a href="{{ url_for('summary', video_id=video.id) }}" class="list-group-item list-group-item-action">
+        <div class="d-flex w-100 justify-content-between">
+            <h5 class="mb-1">{{ video.title }}</h5>
+            <small class="text-muted">{{ summary.created_at.strftime('%Y-%m-%d') }}</small>
+        </div>
+        <p class="mb-1 text-muted">
+            <i class="bi bi-person-circle"></i> {{ video.channel.channel_name }}
+        </p>
+        <p class="mb-1">{{ summary.summary_text[:200] }}{% if summary.summary_text|length > 200 %}...{% endif %}</p>
+        <small class="text-muted">
+            <i class="bi bi-robot"></i> {{ summary.model_used }}
+        </small>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-secondary">
+    <i class="bi bi-inbox"></i> No summaries yet. Add some channels and run a check!
+</div>
+{% endif %}
+
+<div class="mt-4">
+    <a href="{{ url_for('videos') }}" class="btn btn-primary">
+        <i class="bi bi-arrow-right"></i> View All Videos
+    </a>
+</div>
+{% endblock %}

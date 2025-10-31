@@ -213,6 +213,41 @@ def cmd_schedule(args):
         console.print("\n[yellow]Scheduler stopped[/yellow]")
 
 
+def cmd_web(args):
+    """Launch the web interface."""
+    from .web import run_web_server
+
+    config = get_config()
+
+    # Validate config
+    is_valid, errors = config.validate()
+    if not is_valid:
+        console.print("[bold red]Configuration errors:[/bold red]")
+        for error in errors:
+            console.print(f"  [red]✗[/red] {error}")
+        console.print("\nRun 'ytsum init' to set up configuration.")
+        sys.exit(1)
+
+    host = args.host
+    port = args.port
+    debug = args.debug
+
+    console.print(f"[bold cyan]Starting web server...[/bold cyan]")
+    console.print(f"[green]✓[/green] Server running at http://{host}:{port}")
+
+    if host == "0.0.0.0":
+        console.print("[yellow]Note:[/yellow] Server is accessible from all network interfaces")
+    else:
+        console.print("[yellow]Note:[/yellow] Server is only accessible from localhost")
+
+    console.print("\nPress Ctrl+C to stop\n")
+
+    try:
+        run_web_server(host=host, port=port, debug=debug)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Web server stopped[/yellow]")
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -249,6 +284,25 @@ def main():
         "schedule", help="Run scheduler daemon (for systemd service)"
     )
 
+    # web command
+    parser_web = subparsers.add_parser("web", help="Launch web interface")
+    parser_web.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Host to bind to (default: 0.0.0.0 - all interfaces)",
+    )
+    parser_web.add_argument(
+        "--port",
+        type=int,
+        default=5000,
+        help="Port to listen on (default: 5000)",
+    )
+    parser_web.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug mode",
+    )
+
     args = parser.parse_args()
 
     # Setup logging
@@ -272,6 +326,8 @@ def main():
         cmd_config(args)
     elif args.command == "schedule":
         cmd_schedule(args)
+    elif args.command == "web":
+        cmd_web(args)
     else:
         parser.print_help()
         sys.exit(1)
