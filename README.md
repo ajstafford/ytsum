@@ -420,7 +420,7 @@ See full list at [OpenRouter Models](https://openrouter.ai/models)
 
 ## License
 
-MIT License - feel free to modify and use as needed.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Credits
 

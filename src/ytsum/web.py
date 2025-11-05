@@ -15,8 +15,12 @@ logger = logging.getLogger(__name__)
 
 def create_app(db_path=None):
     """Create and configure the Flask application."""
+    import os
+    import secrets
+    
     app = Flask(__name__)
-    app.secret_key = "ytsum-secret-key-change-in-production"
+    # Generate a random secret key if not provided via environment variable
+    app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
 
     # Load config
     config = get_config()

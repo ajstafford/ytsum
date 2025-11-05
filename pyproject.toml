@@ -9,8 +9,25 @@ description = "YouTube Transcript Summarizer - Automated video summarization wit
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "Andrew Stafford", email = "ajstafford@gmail.com"}
 ]
+license = {text = "MIT"}
+keywords = ["youtube", "transcript", "summarizer", "ai", "openrouter", "claude", "automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/ajstafford/ytsum"
+Repository = "https://github.com/ajstafford/ytsum"
+Issues = "https://github.com/ajstafford/ytsum/issues"
 dependencies = [
     "textual>=0.47.0",
     "youtube-transcript-api>=0.6.0",
