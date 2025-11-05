@@ -182,6 +182,37 @@ Example channels to try:
 
 The installation script can set up systemd for you. If you skipped it, manually install:
 
+#### Web Interface Service (Always Running)
+
+To keep the web interface running 24/7:
+
+```bash
+# Copy web service file
+sudo cp ytsum-web.service /etc/systemd/system/ytsum-web@.service
+
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Enable and start the web service
+sudo systemctl enable ytsum-web@$(whoami).service
+sudo systemctl start ytsum-web@$(whoami).service
+
+# Check web service status
+sudo systemctl status ytsum-web@$(whoami).service
+
+# View web service logs
+sudo journalctl -u ytsum-web@$(whoami).service -f
+```
+
+The web interface will be available at `http://your-server-ip:5000` and will:
+- Start automatically on boot
+- Restart automatically if it crashes
+- Be accessible from any device on your network
+
+#### Scheduled Processing (Daily Timer)
+
+For automatic daily video checking and summarization:
+
 ```bash
 # Copy service and timer files
 sudo cp ytsum.service /etc/systemd/system/ytsum@.service

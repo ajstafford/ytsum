@@ -61,27 +61,45 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     SERVICE_FILE="/etc/systemd/system/ytsum@.service"
     TIMER_FILE="/etc/systemd/system/ytsum.timer"
 
-    echo "Setting up systemd service..."
+    echo "Setting up systemd services..."
 
-    # Copy service file
+    # Copy service and timer files for scheduled processing
     sudo cp "$INSTALL_DIR/ytsum.service" "$SERVICE_FILE"
     echo "✓ Service file copied to $SERVICE_FILE"
 
-    # Copy timer file (optional)
     if [ -f "$INSTALL_DIR/ytsum.timer" ]; then
         sudo cp "$INSTALL_DIR/ytsum.timer" "$TIMER_FILE"
         echo "✓ Timer file copied to $TIMER_FILE"
     fi
 
+    # Copy web service file
+    WEB_SERVICE_FILE="/etc/systemd/system/ytsum-web@.service"
+    if [ -f "$INSTALL_DIR/ytsum-web.service" ]; then
+        sudo cp "$INSTALL_DIR/ytsum-web.service" "$WEB_SERVICE_FILE"
+        echo "✓ Web service file copied to $WEB_SERVICE_FILE"
+    fi
+
     # Reload systemd
     sudo systemctl daemon-reload
 
+    # Setup web interface service
+    echo
+    read -p "Enable web interface to run 24/7? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        sudo systemctl enable "ytsum-web@${USER_NAME}.service"
+        sudo systemctl start "ytsum-web@${USER_NAME}.service"
+        echo "✓ Web interface enabled and started"
+        echo "  Access at: http://$(hostname -I | awk '{print $1}'):5000"
+    fi
+
     # Enable service on boot
-    read -p "Enable service to start on boot? (y/n) " -n 1 -r
+    echo
+    read -p "Enable processing service to start on boot? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         sudo systemctl enable "ytsum@${USER_NAME}.service"
-        echo "✓ Service enabled on boot"
+        echo "✓ Processing service enabled on boot"
     fi
 
     # Enable and start timer for automatic daily runs
@@ -95,14 +113,20 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     fi
 
     echo
-    echo "Systemd service and timer commands:"
-    echo "  Service:"
+    echo "Systemd commands:"
+    echo "  Web Interface:"
+    echo "    Start:   sudo systemctl start ytsum-web@${USER_NAME}.service"
+    echo "    Stop:    sudo systemctl stop ytsum-web@${USER_NAME}.service"
+    echo "    Status:  sudo systemctl status ytsum-web@${USER_NAME}.service"
+    echo "    Logs:    sudo journalctl -u ytsum-web@${USER_NAME}.service -f"
+    echo
+    echo "  Processing Service:"
     echo "    Start:   sudo systemctl start ytsum@${USER_NAME}.service"
     echo "    Stop:    sudo systemctl stop ytsum@${USER_NAME}.service"
     echo "    Status:  sudo systemctl status ytsum@${USER_NAME}.service"
     echo "    Logs:    sudo journalctl -u ytsum@${USER_NAME}.service -f"
     echo
-    echo "  Timer:"
+    echo "  Timer (Daily Automation):"
     echo "    Status:  sudo systemctl status ytsum.timer"
     echo "    Logs:    sudo journalctl -u ytsum.timer -f"
     echo "    Enable:  sudo systemctl enable ytsum.timer"
@@ -121,7 +145,8 @@ echo "   - YouTube API: https://console.cloud.google.com/"
 echo "   - OpenRouter API: https://openrouter.ai/"
 echo
 echo "3. Launch the interface:"
-echo "   $INSTALL_DIR/venv/bin/ytsum ui"
+echo "   TUI:  $INSTALL_DIR/venv/bin/ytsum ui"
+echo "   Web:  $INSTALL_DIR/venv/bin/ytsum web"
 echo
 echo "4. Or run a manual check:"
 echo "   $INSTALL_DIR/venv/bin/ytsum run"

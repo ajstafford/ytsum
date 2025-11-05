@@ -1,0 +1,22 @@
+[Unit]
+Description=YouTube Transcript Summarizer Web Interface
+After=network.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/home/%i/ytsum
+ExecStart=/home/%i/ytsum/venv/bin/ytsum web --host 0.0.0.0 --port 5000
+Restart=always
+RestartSec=10
+
+# Environment
+Environment="PATH=/home/%i/ytsum/venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ytsum-web
+
+[Install]
+WantedBy=multi-user.target
