@@ -3,7 +3,10 @@
     "allow": [
       "Bash(chmod:*)",
       "Bash(source:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(sudo systemctl:*)",
+      "Bash(cat:*)",
+      "Bash(sudo journalctl:*)"
     ],
     "deny": [],
     "ask": []

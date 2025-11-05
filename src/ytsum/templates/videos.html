@@ -10,13 +10,24 @@
     <div class="card-body">
         <form method="GET" action="{{ url_for('videos') }}">
             <div class="row g-3">
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label for="search" class="form-label">Search</label>
                     <input type="text" class="form-control" id="search" name="search"
                            value="{{ search }}" placeholder="Search by title or channel name">
                 </div>
-                <div class="col-md-4">
-                    <label for="has_summary" class="form-label">Filter by Summary</label>
+                <div class="col-md-3">
+                    <label for="channel" class="form-label">Channel</label>
+                    <select class="form-select" id="channel" name="channel">
+                        <option value="all" {% if channel_filter == 'all' %}selected{% endif %}>All Channels</option>
+                        {% for ch in channels %}
+                        <option value="{{ ch.id }}" {% if channel_filter == ch.id|string %}selected{% endif %}>
+                            {{ ch.channel_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="has_summary" class="form-label">Summary Status</label>
                     <select class="form-select" id="has_summary" name="has_summary">
                         <option value="all" {% if has_summary == 'all' %}selected{% endif %}>All Videos</option>
                         <option value="yes" {% if has_summary == 'yes' %}selected{% endif %}>With Summary</option>
@@ -77,7 +88,7 @@
 <nav>
     <ul class="pagination justify-content-center">
         <li class="page-item {% if page <= 1 %}disabled{% endif %}">
-            <a class="page-link" href="{{ url_for('videos', search=search, has_summary=has_summary, page=page-1) }}">
+            <a class="page-link" href="{{ url_for('videos', search=search, has_summary=has_summary, channel=channel_filter, page=page-1) }}">
                 Previous
             </a>
         </li>
@@ -87,7 +98,7 @@
                 <li class="page-item active"><span class="page-link">{{ p }}</span></li>
             {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
                 <li class="page-item">
-                    <a class="page-link" href="{{ url_for('videos', search=search, has_summary=has_summary, page=p) }}">
+                    <a class="page-link" href="{{ url_for('videos', search=search, has_summary=has_summary, channel=channel_filter, page=p) }}">
                         {{ p }}
                     </a>
                 </li>
@@ -97,7 +108,7 @@
         {% endfor %}
 
         <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
-            <a class="page-link" href="{{ url_for('videos', search=search, has_summary=has_summary, page=page+1) }}">
+            <a class="page-link" href="{{ url_for('videos', search=search, has_summary=has_summary, channel=channel_filter, page=page+1) }}">
                 Next
             </a>
         </li>

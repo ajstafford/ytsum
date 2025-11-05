@@ -323,6 +323,25 @@ class Database:
             session.expunge_all()
             return results
 
+    def get_all_summaries_with_channels(self) -> List[tuple]:
+        """Get all summaries with their video and channel information.
+
+        Used for grouping key points by creator/channel.
+
+        Returns:
+            List of (Video, Summary) tuples with eager-loaded channel data.
+        """
+        with self.get_session() as session:
+            results = (
+                session.query(Video, Summary)
+                .join(Summary)
+                .options(joinedload(Video.channel))
+                .order_by(Video.channel_id, Video.published_at.desc())
+                .all()
+            )
+            session.expunge_all()
+            return results
+
     # Run history operations
     def add_run_history(
         self,

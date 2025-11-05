@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Key Points by Creator - ytsum{% endblock %}
+
+{% block content %}
+<h1 class="mb-4"><i class="bi bi-list-stars"></i> Key Points by Creator</h1>
+
+<!-- Filter Card -->
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="GET" action="{{ url_for('key_points_by_creator') }}">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="channel" class="form-label">Filter by Creator</label>
+                    <select class="form-select" id="channel" name="channel" onchange="this.form.submit()">
+                        <option value="all" {% if channel_filter == 'all' %}selected{% endif %}>All Creators</option>
+                        {% for ch in channels %}
+                        <option value="{{ ch.id }}" {% if channel_filter == ch.id|string %}selected{% endif %}>
+                            {{ ch.channel_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6 d-flex align-items-end">
+                    <small class="text-muted">
+                        {% if grouped_data %}
+                            Showing <strong>{{ grouped_data|length }}</strong> creator(s)
+                        {% endif %}
+                    </small>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Key Points by Creator -->
+{% if grouped_data %}
+<div class="accordion" id="creatorAccordion">
+    {% for channel_name, data in grouped_data %}
+    <div class="accordion-item">
+        <h2 class="accordion-header">
+            <button class="accordion-button" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#creator{{ loop.index }}" aria-expanded="{% if loop.first %}true{% else %}false{% endif %}"
+                    aria-controls="creator{{ loop.index }}">
+                <i class="bi bi-person-circle me-2"></i>
+                <strong>{{ channel_name }}</strong>
+                <span class="badge bg-info ms-2">{{ data.videos|length }} video(s)</span>
+            </button>
+        </h2>
+        <div id="creator{{ loop.index }}" class="accordion-collapse collapse {% if loop.first %}show{% endif %}"
+             data-bs-parent="#creatorAccordion">
+            <div class="accordion-body p-0">
+                {% for video in data.videos %}
+                <div class="border-bottom p-3 {% if not loop.last %}border-1{% endif %}">
+                    <!-- Video Title -->
+                    <div class="mb-3">
+                        <h5 class="mb-1">
+                            <a href="{{ video.url }}" target="_blank" class="text-decoration-none">
+                                {{ video.title }}
+                                <i class="bi bi-box-arrow-up-right text-muted" style="font-size: 0.8em;"></i>
+                            </a>
+                        </h5>
+                        <small class="text-muted">
+                            <i class="bi bi-calendar"></i> {{ video.published_at.strftime('%B %d, %Y') }}
+                            {% if video.summary_id %}
+                            • <a href="{{ url_for('summary', video_id=video.summary_id) }}" class="text-decoration-none">
+                                <i class="bi bi-file-text"></i> Full Summary
+                            </a>
+                            {% endif %}
+                        </small>
+                    </div>
+
+                    <!-- Key Points List -->
+                    {% if video.key_points %}
+                    <ol class="ps-4 mb-0">
+                        {% for point in video.key_points %}
+                        <li class="mb-2">{{ point }}</li>
+                        {% endfor %}
+                    </ol>
+                    {% else %}
+                    <p class="text-muted mb-0"><em>No key points available</em></p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% else %}
+<div class="alert alert-secondary">
+    <i class="bi bi-inbox"></i> No key points found.
+    {% if channels %}
+        Try adding channels and processing videos!
+    {% else %}
+        Get started by <a href="{{ url_for('channels') }}" class="alert-link">adding some channels</a> to follow.
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

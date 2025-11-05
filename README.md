@@ -1,6 +1,6 @@
 # ytsum - YouTube Transcript Summarizer
 
-Automated tool to fetch YouTube video transcripts from channels you follow and generate AI-powered summaries with key points. Perfect for running on a Raspberry Pi as a daily automation.
+Automated tool to fetch YouTube video transcripts from channels you follow and generate AI-powered summaries with key points.
 
 ## Features
 
@@ -11,7 +11,7 @@ Automated tool to fetch YouTube video transcripts from channels you follow and g
 - **Terminal UI**: Beautiful TUI for managing channels, viewing summaries, and checking run history
 - **Daily Automation**: Systemd service for automatic daily checks
 - **Run History**: Track all processing runs with detailed statistics
-- **SQLite Database**: Lightweight, file-based storage perfect for Raspberry Pi
+- **SQLite Database**: Lightweight, file-based storage
 
 ## Architecture
 
@@ -26,14 +26,14 @@ YouTube API → New Videos → Transcript Fetching → OpenRouter AI → Summari
 - Python 3.9 or higher
 - YouTube Data API v3 key (free from Google Cloud Console)
 - OpenRouter API key (from openrouter.ai)
-- Linux system (tested on Raspberry Pi OS)
+- Linux system
 
 ## Installation
 
 ### Quick Install
 
 ```bash
-# Clone or download to your Raspberry Pi
+# Clone or download
 cd /home/your-user/ytsum
 
 # Run installation script
@@ -183,22 +183,31 @@ Example channels to try:
 The installation script can set up systemd for you. If you skipped it, manually install:
 
 ```bash
-# Copy service file
+# Copy service and timer files
 sudo cp ytsum.service /etc/systemd/system/ytsum@.service
+sudo cp ytsum.timer /etc/systemd/system/ytsum.timer
 
 # Reload systemd
 sudo systemctl daemon-reload
 
-# Enable and start service
+# Enable service on boot (optional)
 sudo systemctl enable ytsum@$(whoami).service
-sudo systemctl start ytsum@$(whoami).service
 
-# Check status
-sudo systemctl status ytsum@$(whoami).service
+# Enable and start timer for automatic daily checks (runs daily at midnight)
+sudo systemctl enable ytsum.timer
+sudo systemctl start ytsum.timer
 
-# View logs
+# Check timer status
+sudo systemctl status ytsum.timer
+
+# View service logs
 sudo journalctl -u ytsum@$(whoami).service -f
+
+# View timer logs
+sudo journalctl -u ytsum.timer -f
 ```
+
+**Note**: The systemd timer runs daily at **00:00 (midnight)** by default. The `CHECK_SCHEDULE` config variable only applies when running `ytsum schedule` manually or with cron.
 
 ### Using Cron (Alternative)
 
@@ -255,7 +264,7 @@ All configuration is done via environment variables in `~/.config/ytsum/.env`:
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key | Required |
 | `OPENROUTER_API_KEY` | OpenRouter API key | Required |
 | `OPENROUTER_MODEL` | Model to use | `anthropic/claude-3.5-sonnet` |
-| `CHECK_SCHEDULE` | Daily check time (HH:MM) | `08:00` |
+| `CHECK_SCHEDULE` | Daily check time (HH:MM) - only used with `ytsum schedule` daemon or cron, not systemd timer | `08:00` |
 | `SUMMARY_MAX_LENGTH` | Max summary length in words | `500` |
 | `MAX_KEY_POINTS` | Number of key points to extract | `5` |
 | `MAX_VIDEOS_PER_CHECK` | Max videos to check per channel | `50` |
@@ -309,6 +318,35 @@ sudo journalctl -u ytsum@$(whoami).service -f
 sudo systemctl restart ytsum@$(whoami).service
 ```
 
+### Systemd Timer Not Running
+
+If automated daily checks aren't happening:
+
+```bash
+# Check timer status
+sudo systemctl status ytsum.timer
+
+# Should show: "Active: active (waiting)"
+# If "Active: inactive (dead)", enable and start it:
+sudo systemctl enable ytsum.timer
+sudo systemctl start ytsum.timer
+
+# View next scheduled run
+sudo systemctl list-timers ytsum.timer
+
+# View timer logs
+sudo journalctl -u ytsum.timer -f
+
+# View service logs (when timer triggers)
+sudo journalctl -u ytsum@$(whoami).service -f
+```
+
+**Note**: The timer runs daily at **00:00 (midnight)**. To change the schedule, edit `/etc/systemd/system/ytsum.timer` and modify the `OnCalendar` line, then reload:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart ytsum.timer
+```
+
 ## Development
 
 ### Install in Development Mode
@@ -344,7 +382,7 @@ See full list at [OpenRouter Models](https://openrouter.ai/models)
 
 ## Privacy & Data
 
-- All data is stored locally in SQLite on your Raspberry Pi
+- All data is stored locally in SQLite
 - API keys are stored in `~/.config/ytsum/.env` (not synced/shared)
 - Transcripts and summaries are never sent anywhere except to OpenRouter for summarization
 - No telemetry or data collection

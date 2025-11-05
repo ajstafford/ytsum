@@ -7,7 +7,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, jso
 from sqlalchemy.orm import joinedload
 
 from .config import get_config
-from .database import Database, Video
+from .database import Channel, Database, Video
 from .youtube import YouTubeClient
 
 logger = logging.getLogger(__name__)
@@ -104,8 +104,12 @@ def create_app(db_path=None):
         # Get filter parameters
         search = request.args.get("search", "").strip()
         has_summary = request.args.get("has_summary", "all")
+        channel_filter = request.args.get("channel", "all")
         page = int(request.args.get("page", 1))
         per_page = 50
+
+        # Get all channels for the dropdown
+        all_channels = db.get_all_channels()
 
         # Get videos
         with db.get_session() as session:
@@ -115,11 +119,16 @@ def create_app(db_path=None):
                 .order_by(Video.published_at.desc())
             )
 
-            # Apply filters
+            # Apply filters (case-insensitive)
             if search:
+                search_pattern = f"%{search}%"
                 query = query.filter(
-                    Video.title.contains(search) | Video.channel.has(channel_name=search)
+                    (Video.title.ilike(search_pattern)) |
+                    (Video.channel.has(Channel.channel_name.ilike(search_pattern)))
                 )
+
+            if channel_filter != "all":
+                query = query.filter(Video.channel_id == int(channel_filter))
 
             if has_summary == "yes":
                 query = query.filter(Video.summary.has())
@@ -136,8 +145,10 @@ def create_app(db_path=None):
         return render_template(
             "videos.html",
             videos=videos_list,
+            channels=all_channels,
             search=search,
             has_summary=has_summary,
+            channel_filter=channel_filter,
             page=page,
             total_pages=total_pages,
         )
@@ -176,6 +187,57 @@ def create_app(db_path=None):
             session.expunge_all()
 
         return render_template("summary.html", video=video_data)
+
+    @app.route("/key-points-by-creator")
+    def key_points_by_creator():
+        """View all key points grouped by creator/channel."""
+        # Get filter parameter
+        channel_filter = request.args.get("channel", "all")
+
+        # Get all channels for the dropdown
+        all_channels = db.get_all_channels()
+
+        # Get all summaries with channels
+        results = db.get_all_summaries_with_channels()
+
+        # Group results by channel
+        grouped_data = {}
+        for video, summary in results:
+            if summary is None:
+                continue
+
+            channel_name = video.channel.channel_name
+            if channel_name not in grouped_data:
+                grouped_data[channel_name] = {
+                    "channel_id": video.channel.id,
+                    "videos": [],
+                }
+
+            grouped_data[channel_name]["videos"].append({
+                "title": video.title,
+                "url": video.url,
+                "published_at": video.published_at,
+                "key_points": summary.get_key_points(),
+                "summary_id": summary.id,
+            })
+
+        # Filter by channel if specified
+        if channel_filter != "all":
+            filtered_data = {}
+            for channel_name, data in grouped_data.items():
+                if str(data["channel_id"]) == channel_filter:
+                    filtered_data[channel_name] = data
+            grouped_data = filtered_data
+
+        # Sort channels by name
+        sorted_channels = sorted(grouped_data.items())
+
+        return render_template(
+            "key_points.html",
+            grouped_data=sorted_channels,
+            channels=all_channels,
+            channel_filter=channel_filter,
+        )
 
     @app.route("/history")
     def history():

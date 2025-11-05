@@ -1,5 +1,5 @@
 #!/bin/bash
-# Installation script for ytsum on Raspberry Pi
+# Installation script for ytsum
 
 set -e  # Exit on error
 
@@ -76,20 +76,37 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     # Reload systemd
     sudo systemctl daemon-reload
 
-    # Enable and start service
+    # Enable service on boot
     read -p "Enable service to start on boot? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         sudo systemctl enable "ytsum@${USER_NAME}.service"
-        echo "✓ Service enabled"
+        echo "✓ Service enabled on boot"
+    fi
+
+    # Enable and start timer for automatic daily runs
+    echo
+    read -p "Enable automatic daily checks with systemd timer? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        sudo systemctl enable ytsum.timer
+        sudo systemctl start ytsum.timer
+        echo "✓ Timer enabled and started (runs daily at midnight)"
     fi
 
     echo
-    echo "Systemd service commands:"
-    echo "  Start:   sudo systemctl start ytsum@${USER_NAME}.service"
-    echo "  Stop:    sudo systemctl stop ytsum@${USER_NAME}.service"
-    echo "  Status:  sudo systemctl status ytsum@${USER_NAME}.service"
-    echo "  Logs:    sudo journalctl -u ytsum@${USER_NAME}.service -f"
+    echo "Systemd service and timer commands:"
+    echo "  Service:"
+    echo "    Start:   sudo systemctl start ytsum@${USER_NAME}.service"
+    echo "    Stop:    sudo systemctl stop ytsum@${USER_NAME}.service"
+    echo "    Status:  sudo systemctl status ytsum@${USER_NAME}.service"
+    echo "    Logs:    sudo journalctl -u ytsum@${USER_NAME}.service -f"
+    echo
+    echo "  Timer:"
+    echo "    Status:  sudo systemctl status ytsum.timer"
+    echo "    Logs:    sudo journalctl -u ytsum.timer -f"
+    echo "    Enable:  sudo systemctl enable ytsum.timer"
+    echo "    Start:   sudo systemctl start ytsum.timer"
 fi
 
 echo
