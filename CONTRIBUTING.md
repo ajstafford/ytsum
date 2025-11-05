@@ -2,6 +2,8 @@
 
 Thank you for your interest in contributing to ytsum! This document provides guidelines for contributing to the project.
 
+**Note**: This project was developed with significant assistance from AI tools (primarily Claude by Anthropic). We welcome both human and AI-assisted contributions. See [AI_ATTRIBUTION.md](AI_ATTRIBUTION.md) for details.
+
 ## Getting Started
 
 1. Fork the repository

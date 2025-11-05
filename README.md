@@ -1,6 +1,12 @@
 # ytsum - YouTube Transcript Summarizer
 
+[![AI Assisted](https://img.shields.io/badge/AI-Assisted-blue?logo=openai)](https://github.com/ajstafford/ytsum)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+
 Automated tool to fetch YouTube video transcripts from channels you follow and generate AI-powered summaries with key points.
+
+> **Note**: This project was developed with assistance from AI tools. See [AI_ATTRIBUTION.md](AI_ATTRIBUTION.md) for details.
 
 ## Features
 
