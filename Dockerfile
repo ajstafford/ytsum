@@ -14,8 +14,7 @@ COPY requirements.txt .
 COPY pyproject.toml .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir flask
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source code
 COPY src/ ./src/
