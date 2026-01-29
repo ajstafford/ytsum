@@ -205,6 +205,48 @@ After changing `docker.env`, restart the container:
 docker-compose restart
 ```
 
+### Automated Scheduling with Docker
+
+The Docker container runs the web interface by default. To enable automatic daily video processing, you have three options:
+
+#### Option 1: Use the Scheduler Compose File (Easiest)
+
+Use the provided `docker-compose.with-scheduler.yml` which includes both the web interface and a scheduler service:
+
+```bash
+# Stop the current setup if running
+docker-compose down
+
+# Start with scheduler
+docker-compose -f docker-compose.with-scheduler.yml up -d
+```
+
+This runs both the web interface and a scheduler that processes videos daily at the time specified in `CHECK_SCHEDULE` (default: 08:00).
+
+#### Option 2: Host Cron
+
+Add a cron job on your host system to trigger processing:
+
+```bash
+# Edit your crontab
+crontab -e
+
+# Add this line to run daily at 8 AM
+0 8 * * * docker-compose -f /path/to/ytsum/docker-compose.yml exec -T ytsum ytsum run >> /var/log/ytsum-cron.log 2>&1
+```
+
+Replace `/path/to/ytsum/` with the actual path to your ytsum directory.
+
+#### Option 3: Manual Processing
+
+Trigger processing manually whenever you want:
+
+```bash
+docker-compose exec ytsum ytsum run
+```
+
+Or from the web interface, click the "Run Check Now" button.
+
 ### Troubleshooting Docker
 
 **Container won't start**:

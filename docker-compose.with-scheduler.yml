@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  ytsum-web:
+    build: .
+    container_name: ytsum-web
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persistent volume for SQLite database and logs
+      - ytsum-data:/data
+    environment:
+      - DATABASE_PATH=/data/ytsum.db
+      - LOG_PATH=/data/logs
+    env_file:
+      - docker.env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  ytsum-scheduler:
+    build: .
+    container_name: ytsum-scheduler
+    volumes:
+      # Share the same data volume with web service
+      - ytsum-data:/data
+    environment:
+      - DATABASE_PATH=/data/ytsum.db
+      - LOG_PATH=/data/logs
+    env_file:
+      - docker.env
+    command: ["ytsum", "schedule"]
+    restart: unless-stopped
+    depends_on:
+      - ytsum-web
+
+volumes:
+  # Named volume for persistent data storage (shared between services)
+  ytsum-data:
+    driver: local
