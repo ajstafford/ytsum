@@ -9,12 +9,6 @@ services:
     volumes:
       # Persistent volume for SQLite database and logs
       - ytsum-data:/data
-      # Mount .env file for configuration
-      - ./docker.env:/config/.env:ro
-    environment:
-      # Override config location to use mounted .env file
-      - DATABASE_PATH=/data/ytsum.db
-      - LOG_PATH=/data/logs
     env_file:
       - docker.env
     restart: unless-stopped

@@ -166,18 +166,24 @@ Your database and logs are stored in a Docker volume named `ytsum-data`. This en
 
 **View volume information**:
 ```bash
+# List all volumes to find your ytsum volume
+docker volume ls | grep ytsum
+
+# Inspect the volume (replace ytsum_ytsum-data with your actual volume name from above)
 docker volume inspect ytsum_ytsum-data
 ```
 
 **Backup your data**:
 ```bash
 # Create a backup of the database
+# Note: Replace 'ytsum_ytsum-data' with your actual volume name from 'docker volume ls'
 docker run --rm -v ytsum_ytsum-data:/data -v $(pwd):/backup alpine tar czf /backup/ytsum-backup.tar.gz -C /data .
 ```
 
 **Restore from backup**:
 ```bash
 # Restore database from backup
+# Note: Replace 'ytsum_ytsum-data' with your actual volume name from 'docker volume ls'
 docker run --rm -v ytsum_ytsum-data:/data -v $(pwd):/backup alpine tar xzf /backup/ytsum-backup.tar.gz -C /data
 ```
 
@@ -223,6 +229,8 @@ docker-compose -f docker-compose.with-scheduler.yml up -d
 
 This runs both the web interface and a scheduler that processes videos daily at the time specified in `CHECK_SCHEDULE` (default: 08:00).
 
+**Note:** SQLite handles concurrent reads well, but the web service and scheduler may occasionally encounter brief database locks during writes. This is normal SQLite behavior when multiple processes access the same database.
+
 #### Option 2: Host Cron
 
 Add a cron job on your host system to trigger processing:
@@ -232,10 +240,11 @@ Add a cron job on your host system to trigger processing:
 crontab -e
 
 # Add this line to run daily at 8 AM
-0 8 * * * docker-compose -f /path/to/ytsum/docker-compose.yml exec -T ytsum ytsum run >> /var/log/ytsum-cron.log 2>&1
+# Replace /path/to/ytsum/ with the actual path to your ytsum directory
+0 8 * * * cd /path/to/ytsum && docker-compose run --rm ytsum ytsum run >> /var/log/ytsum-cron.log 2>&1
 ```
 
-Replace `/path/to/ytsum/` with the actual path to your ytsum directory.
+This uses `docker-compose run` which starts a new container, runs the command, and removes the container afterward.
 
 #### Option 3: Manual Processing
 

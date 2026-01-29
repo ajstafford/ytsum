@@ -9,9 +9,6 @@ services:
     volumes:
       # Persistent volume for SQLite database and logs
       - ytsum-data:/data
-    environment:
-      - DATABASE_PATH=/data/ytsum.db
-      - LOG_PATH=/data/logs
     env_file:
       - docker.env
     restart: unless-stopped
@@ -28,9 +25,6 @@ services:
     volumes:
       # Share the same data volume with web service
       - ytsum-data:/data
-    environment:
-      - DATABASE_PATH=/data/ytsum.db
-      - LOG_PATH=/data/logs
     env_file:
       - docker.env
     command: ["ytsum", "schedule"]
