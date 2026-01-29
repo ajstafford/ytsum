@@ -27,6 +27,7 @@ ENV/
 
 # Environment variables
 .env
+docker.env
 
 # Database
 data/*.db

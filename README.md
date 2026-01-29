@@ -34,6 +34,209 @@ YouTube API → New Videos → Transcript Fetching → OpenRouter AI → Summari
 - OpenRouter API key (from openrouter.ai)
 - Linux system
 
+**OR**
+
+- Docker and Docker Compose (for containerized deployment)
+- YouTube Data API v3 key (free from Google Cloud Console)
+- OpenRouter API key (from openrouter.ai)
+
+## Docker Installation (Recommended)
+
+Running ytsum with Docker is the easiest way to get started. All dependencies are bundled in the container, and your data is automatically persisted.
+
+### Prerequisites
+
+1. Install Docker and Docker Compose:
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get update
+   sudo apt-get install docker.io docker-compose
+   
+   # Or use Docker's official installation script
+   curl -fsSL https://get.docker.com -o get-docker.sh
+   sudo sh get-docker.sh
+   ```
+
+2. Add your user to the docker group (optional, to run without sudo):
+   ```bash
+   sudo usermod -aG docker $USER
+   # Log out and back in for this to take effect
+   ```
+
+### Get API Keys
+
+1. **YouTube Data API v3 Key**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project (or use existing)
+   - Enable "YouTube Data API v3"
+   - Create credentials → API Key
+   - Copy the API key
+
+2. **OpenRouter API Key**:
+   - Go to [OpenRouter](https://openrouter.ai/)
+   - Sign up and get an API key
+   - Choose your preferred model (Claude 3.5 Sonnet recommended)
+
+### Quick Start with Docker
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/ajstafford/ytsum.git
+   cd ytsum
+   ```
+
+2. **Configure API keys**:
+   ```bash
+   # Copy the example environment file
+   cp docker.env.example docker.env
+   
+   # Edit docker.env and add your API keys
+   nano docker.env
+   ```
+   
+   **Required:** Update these values in `docker.env`:
+   - `YOUTUBE_API_KEY=your_youtube_api_key_here`
+   - `OPENROUTER_API_KEY=your_openrouter_api_key_here`
+
+3. **Start the application**:
+   ```bash
+   docker-compose up -d
+   ```
+   
+   This will:
+   - Build the Docker image
+   - Create a persistent volume for your database
+   - Start the web interface on port 5000
+   - Run in the background
+
+4. **Access the web interface**:
+   - From the same device: `http://localhost:5000`
+   - From another device on your network: `http://YOUR_SERVER_IP:5000`
+   - Find your server's IP: `hostname -I`
+
+### Docker Management
+
+**View logs**:
+```bash
+docker-compose logs -f
+```
+
+**Stop the application**:
+```bash
+docker-compose stop
+```
+
+**Restart the application**:
+```bash
+docker-compose restart
+```
+
+**Stop and remove containers** (data is preserved):
+```bash
+docker-compose down
+```
+
+**Update to latest version**:
+```bash
+git pull
+docker-compose up -d --build
+```
+
+**Run manual check/processing**:
+```bash
+docker-compose exec ytsum ytsum run
+```
+
+**Access the TUI interface**:
+```bash
+docker-compose exec ytsum ytsum ui
+```
+
+**View application status**:
+```bash
+docker-compose exec ytsum ytsum status
+```
+
+### Data Persistence
+
+Your database and logs are stored in a Docker volume named `ytsum-data`. This ensures:
+- ✅ Data persists between container restarts
+- ✅ Data survives container removal
+- ✅ Data is preserved during updates
+
+**View volume information**:
+```bash
+docker volume inspect ytsum_ytsum-data
+```
+
+**Backup your data**:
+```bash
+# Create a backup of the database
+docker run --rm -v ytsum_ytsum-data:/data -v $(pwd):/backup alpine tar czf /backup/ytsum-backup.tar.gz -C /data .
+```
+
+**Restore from backup**:
+```bash
+# Restore database from backup
+docker run --rm -v ytsum_ytsum-data:/data -v $(pwd):/backup alpine tar xzf /backup/ytsum-backup.tar.gz -C /data
+```
+
+**Reset/delete all data** (⚠️ WARNING: This deletes everything):
+```bash
+docker-compose down -v
+```
+
+### Docker Configuration
+
+All configuration is done via the `docker.env` file. Key settings:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `YOUTUBE_API_KEY` | YouTube Data API v3 key | Required |
+| `OPENROUTER_API_KEY` | OpenRouter API key | Required |
+| `OPENROUTER_MODEL` | Model to use | `anthropic/claude-3.5-sonnet` |
+| `SUMMARY_MAX_LENGTH` | Max summary length in words | `500` |
+| `MAX_KEY_POINTS` | Number of key points to extract | `5` |
+| `MAX_VIDEOS_PER_CHECK` | Max videos to check per channel | `50` |
+| `DAYS_TO_LOOK_BACK` | How far back to check for new videos | `7` |
+
+After changing `docker.env`, restart the container:
+```bash
+docker-compose restart
+```
+
+### Troubleshooting Docker
+
+**Container won't start**:
+```bash
+# Check logs for errors
+docker-compose logs
+
+# Verify docker.env has correct API keys
+cat docker.env | grep API_KEY
+```
+
+**Permission issues**:
+```bash
+# Ensure your user is in the docker group
+groups | grep docker
+
+# If not, add yourself and re-login
+sudo usermod -aG docker $USER
+```
+
+**Port 5000 already in use**:
+Edit `docker-compose.yml` and change the port mapping:
+```yaml
+ports:
+  - "8080:5000"  # Use port 8080 instead
+```
+
+**Check container health**:
+```bash
+docker-compose ps
+```
+
 ## Installation
 
 ### Quick Install

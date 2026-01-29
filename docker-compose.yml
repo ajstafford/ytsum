@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  ytsum:
+    build: .
+    container_name: ytsum
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persistent volume for SQLite database and logs
+      - ytsum-data:/data
+      # Mount .env file for configuration
+      - ./docker.env:/config/.env:ro
+    environment:
+      # Override config location to use mounted .env file
+      - DATABASE_PATH=/data/ytsum.db
+      - LOG_PATH=/data/logs
+    env_file:
+      - docker.env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  # Named volume for persistent data storage
+  ytsum-data:
+    driver: local

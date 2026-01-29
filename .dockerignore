@@ -1,0 +1,51 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation
+*.md
+!README.md
+
+# Data and logs
+data/
+*.db
+*.log
+
+# Configuration (except docker.env)
+.env
+.env.example
+
+# Service files
+*.service
+*.timer
+install.sh
+
+# Attribution
+AI_ATTRIBUTION.md
+CONTRIBUTING.md
+LICENSE
