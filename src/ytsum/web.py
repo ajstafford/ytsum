@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from sqlalchemy.orm import joinedload
 
 from .config import get_config
@@ -22,19 +23,74 @@ def create_app(db_path=None):
     # Generate a random secret key if not provided via environment variable
     app.secret_key = os.environ.get("FLASK_SECRET_KEY", secrets.token_hex(32))
 
+    # Initialize Flask-Login
+    login_manager = LoginManager()
+    login_manager.login_view = "login"
+    login_manager.init_app(app)
+
     # Load config
     config = get_config()
 
     # Initialize database
     db = Database(db_path or config.database_path)
 
+    @login_manager.user_loader
+    def load_user(user_id):
+        return db.get_user(int(user_id))
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if current_user.is_authenticated:
+            return redirect(url_for("index"))
+        
+        if request.method == "POST":
+            username = request.form.get("username")
+            password = request.form.get("password")
+            user = db.get_user_by_username(username)
+            
+            if user and user.check_password(password):
+                login_user(user)
+                next_page = request.args.get("next")
+                return redirect(next_page or url_for("index"))
+            flash("Invalid username or password", "danger")
+        
+        return render_template("login.html")
+
+    @app.route("/register", methods=["GET", "POST"])
+    def register():
+        if current_user.is_authenticated:
+            return redirect(url_for("index"))
+            
+        if request.method == "POST":
+            username = request.form.get("username")
+            password = request.form.get("password")
+            
+            if not username or not password:
+                flash("Username and password are required", "warning")
+            elif db.get_user_by_username(username):
+                flash("Username already exists", "warning")
+            else:
+                db.add_user(username, password)
+                flash("Registration successful! Please login.", "success")
+                return redirect(url_for("login"))
+                
+        return render_template("register.html")
+
+    @app.route("/logout")
+    @login_required
+    def logout():
+        logout_user()
+        return redirect(url_for("login"))
+
     @app.route("/")
+    @login_required
     def index():
         """Dashboard page."""
-        stats = db.get_stats()
+        # TODO: Update get_stats to support user_id
+        stats = db.get_stats(user_id=current_user.id)
 
         # Get recent summaries
-        recent_summaries = db.get_summaries_with_videos(limit=10)
+        recent_summaries = db.get_summaries_with_videos(limit=10, user_id=current_user.id)
 
         return render_template(
             "dashboard.html",
@@ -43,12 +99,14 @@ def create_app(db_path=None):
         )
 
     @app.route("/channels")
+    @login_required
     def channels():
         """Channels management page."""
-        channels_list = db.get_all_channels()
+        channels_list = db.get_all_channels(user_id=current_user.id)
         return render_template("channels.html", channels=channels_list)
 
     @app.route("/channels/add", methods=["POST"])
+    @login_required
     def add_channel():
         """Add a new channel."""
         channel_input = request.form.get("channel_input", "").strip()
@@ -74,7 +132,7 @@ def create_app(db_path=None):
 
             # Add to database
             result = db.add_channel(
-                channel_info["id"], channel_info["name"], channel_info["url"]
+                channel_info["id"], channel_info["name"], channel_info["url"], user_id=current_user.id
             )
 
             if result:
@@ -89,10 +147,11 @@ def create_app(db_path=None):
         return redirect(url_for("channels"))
 
     @app.route("/channels/delete/<channel_id>", methods=["POST"])
+    @login_required
     def delete_channel(channel_id):
         """Delete a channel."""
         try:
-            if db.remove_channel(channel_id):
+            if db.remove_channel(channel_id, user_id=current_user.id):
                 flash("Channel removed successfully", "success")
             else:
                 flash("Channel not found", "warning")
@@ -103,6 +162,7 @@ def create_app(db_path=None):
         return redirect(url_for("channels"))
 
     @app.route("/videos")
+    @login_required
     def videos():
         """Videos list page."""
         # Get filter parameters
@@ -113,12 +173,14 @@ def create_app(db_path=None):
         per_page = 50
 
         # Get all channels for the dropdown
-        all_channels = db.get_all_channels()
+        all_channels = db.get_all_channels(user_id=current_user.id)
 
         # Get videos
         with db.get_session() as session:
             query = (
                 session.query(Video)
+                .join(Video.channel)
+                .filter(Channel.user_id == current_user.id)
                 .options(joinedload(Video.channel), joinedload(Video.summary))
                 .order_by(Video.published_at.desc())
             )
@@ -132,6 +194,7 @@ def create_app(db_path=None):
                 )
 
             if channel_filter != "all":
+                # Ensure the filtered channel belongs to the user (implicit via above join, but good to check)
                 query = query.filter(Video.channel_id == int(channel_filter))
 
             if has_summary == "yes":
@@ -158,13 +221,16 @@ def create_app(db_path=None):
         )
 
     @app.route("/summary/<int:video_id>")
+    @login_required
     def summary(video_id):
         """Individual summary view page."""
         with db.get_session() as session:
             video = (
                 session.query(Video)
+                .join(Video.channel)
+                .filter(Channel.user_id == current_user.id)
                 .options(joinedload(Video.channel), joinedload(Video.summary))
-                .filter_by(id=video_id)
+                .filter(Video.id == video_id)
                 .first()
             )
 
@@ -193,16 +259,17 @@ def create_app(db_path=None):
         return render_template("summary.html", video=video_data)
 
     @app.route("/key-points-by-creator")
+    @login_required
     def key_points_by_creator():
         """View all key points grouped by creator/channel."""
         # Get filter parameter
         channel_filter = request.args.get("channel", "all")
 
         # Get all channels for the dropdown
-        all_channels = db.get_all_channels()
+        all_channels = db.get_all_channels(user_id=current_user.id)
 
         # Get all summaries with channels
-        results = db.get_all_summaries_with_channels()
+        results = db.get_all_summaries_with_channels(user_id=current_user.id)
 
         # Group results by channel
         grouped_data = {}
@@ -244,12 +311,15 @@ def create_app(db_path=None):
         )
 
     @app.route("/history")
+    @login_required
     def history():
         """Run history page."""
+        # TODO: Filter history by user if we implement user-specific runs
         history_list = db.get_run_history(limit=100)
         return render_template("history.html", history=history_list)
 
     @app.route("/run", methods=["POST"])
+    @login_required
     def run_check():
         """Trigger a manual run."""
         try:
@@ -276,9 +346,10 @@ def create_app(db_path=None):
         return redirect(url_for("index"))
 
     @app.route("/api/stats")
+    @login_required
     def api_stats():
         """API endpoint for stats (for AJAX updates)."""
-        stats = db.get_stats()
+        stats = db.get_stats(user_id=current_user.id)
         return jsonify(
             {
                 "total_channels": stats["total_channels"],

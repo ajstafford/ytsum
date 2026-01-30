@@ -10,6 +10,7 @@ Automated tool to fetch YouTube video transcripts from channels you follow and g
 
 ## Features
 
+- **Multi-user Authentication**: Secure login and registration with private user data
 - **Channel Management**: Follow YouTube channels and automatically track new videos
 - **Transcript Fetching**: Automatically fetch transcripts for new videos
 - **AI Summarization**: Generate concise summaries with key takeaways using OpenRouter (Claude, GPT, Llama, etc.)

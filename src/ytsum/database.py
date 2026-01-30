@@ -14,11 +14,38 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
+    UniqueConstraint,
+    inspect,
+    text,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, relationship, sessionmaker, joinedload
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_login import UserMixin
 
 Base = declarative_base()
+
+
+class User(UserMixin, Base):
+    """User account."""
+
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String(64), unique=True, nullable=False, index=True)
+    password_hash = Column(String(128))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    channels = relationship("Channel", back_populates="user")
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def __repr__(self):
+        return f"<User {self.username}>"
 
 
 class Channel(Base):
@@ -27,13 +54,20 @@ class Channel(Base):
     __tablename__ = "channels"
 
     id = Column(Integer, primary_key=True)
-    channel_id = Column(String, unique=True, nullable=False, index=True)
+    # channel_id is unique per user, not globally
+    channel_id = Column(String, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     channel_name = Column(String, nullable=False)
     channel_url = Column(String, nullable=False)
     added_date = Column(DateTime, default=datetime.utcnow)
     last_checked = Column(DateTime, nullable=True)
 
+    user = relationship("User", back_populates="channels")
     videos = relationship("Video", back_populates="channel", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint('channel_id', 'user_id', name='_user_channel_uc'),
+    )
 
     def __repr__(self):
         return f"<Channel(name='{self.channel_name}', id='{self.channel_id}')>"
@@ -151,60 +185,130 @@ class Database:
         self.engine = create_engine(f"sqlite:///{db_path}")
         self.SessionLocal = sessionmaker(bind=self.engine)
 
-        # Create all tables
+        # Migration: Check schema
+        inspector = inspect(self.engine)
+        if "channels" in inspector.get_table_names():
+            columns = [c["name"] for c in inspector.get_columns("channels")]
+            if "user_id" not in columns:
+                # Perform migration
+                with self.engine.connect() as conn:
+                    # 1. Rename old table
+                    conn.execute(text("ALTER TABLE channels RENAME TO channels_old"))
+                    conn.commit()
+        
+        # Create all tables (including new 'channels' if we renamed the old one)
         Base.metadata.create_all(self.engine)
+        
+        # Complete migration if needed
+        inspector = inspect(self.engine)
+        if "channels_old" in inspector.get_table_names():
+             with self.engine.connect() as conn:
+                # 3. Copy data
+                conn.execute(text("""
+                    INSERT INTO channels (id, channel_id, channel_name, channel_url, added_date, last_checked)
+                    SELECT id, channel_id, channel_name, channel_url, added_date, last_checked
+                    FROM channels_old
+                """))
+                
+                # 4. Drop old table
+                conn.execute(text("DROP TABLE channels_old"))
+                conn.commit()
 
     def get_session(self) -> Session:
         """Get a new database session."""
         return self.SessionLocal()
 
+    # User operations
+    def add_user(self, username, password):
+        """Add a new user."""
+        with self.get_session() as session:
+            user = User(username=username)
+            user.set_password(password)
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            session.expunge(user)
+            return user
+
+    def get_user(self, user_id):
+        """Get user by ID."""
+        with self.get_session() as session:
+            user = session.query(User).get(int(user_id))
+            if user:
+                session.expunge(user)
+            return user
+
+    def get_user_by_username(self, username):
+        """Get user by username."""
+        with self.get_session() as session:
+            user = session.query(User).filter_by(username=username).first()
+            if user:
+                session.expunge(user)
+            return user
+
     # Channel operations
     def add_channel(
-        self, channel_id: str, channel_name: str, channel_url: str
+        self, channel_id: str, channel_name: str, channel_url: str, user_id: Optional[int] = None
     ) -> Optional[Channel]:
         """Add a new channel to follow.
 
         Returns:
-            The created Channel object, or None if it already exists.
+            The created Channel object, or None if it already exists for this user.
         """
         with self.get_session() as session:
-            existing = session.query(Channel).filter_by(channel_id=channel_id).first()
+            query = session.query(Channel).filter_by(channel_id=channel_id)
+            if user_id is not None:
+                query = query.filter_by(user_id=user_id)
+            else:
+                query = query.filter(Channel.user_id.is_(None))
+
+            existing = query.first()
             if existing:
                 return None
 
             channel = Channel(
-                channel_id=channel_id, channel_name=channel_name, channel_url=channel_url
+                channel_id=channel_id, 
+                channel_name=channel_name, 
+                channel_url=channel_url,
+                user_id=user_id
             )
             session.add(channel)
             session.commit()
             session.refresh(channel)
             return channel
 
-    def get_all_channels(self) -> List[Channel]:
+    def get_all_channels(self, user_id: Optional[int] = None) -> List[Channel]:
         """Get all followed channels."""
         with self.get_session() as session:
-            channels = session.query(Channel).all()
+            query = session.query(Channel)
+            if user_id is not None:
+                query = query.filter_by(user_id=user_id)
+            channels = query.all()
             session.expunge_all()
             return channels
 
-    def remove_channel(self, channel_id: str) -> bool:
+    def remove_channel(self, channel_id: str, user_id: Optional[int] = None) -> bool:
         """Remove a channel and all its videos.
 
         Returns:
             True if removed, False if not found.
         """
         with self.get_session() as session:
-            channel = session.query(Channel).filter_by(channel_id=channel_id).first()
+            query = session.query(Channel).filter_by(channel_id=channel_id)
+            if user_id is not None:
+                query = query.filter_by(user_id=user_id)
+            
+            channel = query.first()
             if channel:
                 session.delete(channel)
                 session.commit()
                 return True
             return False
 
-    def update_channel_check_time(self, channel_id: str):
+    def update_channel_check_time(self, id: int):
         """Update the last_checked timestamp for a channel."""
         with self.get_session() as session:
-            channel = session.query(Channel).filter_by(channel_id=channel_id).first()
+            channel = session.query(Channel).get(id)
             if channel:
                 channel.last_checked = datetime.utcnow()
                 session.commit()
@@ -305,25 +409,28 @@ class Database:
             session.refresh(summary)
             return summary
 
-    def get_summaries_with_videos(self, limit: int = 20) -> List[tuple]:
+    def get_summaries_with_videos(self, limit: int = 20, user_id: Optional[int] = None) -> List[tuple]:
         """Get recent summaries with their video information.
 
         Returns:
             List of (Video, Summary) tuples.
         """
         with self.get_session() as session:
-            results = (
+            query = (
                 session.query(Video, Summary)
                 .join(Summary)
+                .join(Channel)
                 .options(joinedload(Video.channel))
                 .order_by(Summary.created_at.desc())
-                .limit(limit)
-                .all()
             )
+            if user_id is not None:
+                query = query.filter(Channel.user_id == user_id)
+
+            results = query.limit(limit).all()
             session.expunge_all()
             return results
 
-    def get_all_summaries_with_channels(self) -> List[tuple]:
+    def get_all_summaries_with_channels(self, user_id: Optional[int] = None) -> List[tuple]:
         """Get all summaries with their video and channel information.
 
         Used for grouping key points by creator/channel.
@@ -332,13 +439,17 @@ class Database:
             List of (Video, Summary) tuples with eager-loaded channel data.
         """
         with self.get_session() as session:
-            results = (
+            query = (
                 session.query(Video, Summary)
                 .join(Summary)
+                .join(Channel)
                 .options(joinedload(Video.channel))
                 .order_by(Video.channel_id, Video.published_at.desc())
-                .all()
             )
+            if user_id is not None:
+                query = query.filter(Channel.user_id == user_id)
+
+            results = query.all()
             session.expunge_all()
             return results
 
@@ -375,18 +486,29 @@ class Database:
             session.expunge_all()
             return history
 
-    def get_stats(self) -> dict:
+    def get_stats(self, user_id: Optional[int] = None) -> dict:
         """Get database statistics."""
         with self.get_session() as session:
+            channel_query = session.query(Channel)
+            video_query = session.query(Video).join(Channel)
+            transcript_query = session.query(Transcript).join(Video).join(Channel)
+            summary_query = session.query(Summary).join(Video).join(Channel)
+
+            if user_id is not None:
+                channel_query = channel_query.filter(Channel.user_id == user_id)
+                video_query = video_query.filter(Channel.user_id == user_id)
+                transcript_query = transcript_query.filter(Channel.user_id == user_id)
+                summary_query = summary_query.filter(Channel.user_id == user_id)
+
             last_run = session.query(RunHistory).order_by(RunHistory.run_timestamp.desc()).first()
             if last_run:
                 session.expunge(last_run)
 
             return {
-                "total_channels": session.query(Channel).count(),
-                "total_videos": session.query(Video).count(),
-                "videos_with_transcripts": session.query(Transcript).count(),
-                "videos_with_summaries": session.query(Summary).count(),
+                "total_channels": channel_query.count(),
+                "total_videos": video_query.count(),
+                "videos_with_transcripts": transcript_query.count(),
+                "videos_with_summaries": summary_query.count(),
                 "total_runs": session.query(RunHistory).count(),
                 "last_run": last_run,
             }

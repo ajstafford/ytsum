@@ -75,7 +75,7 @@ def check_and_process(db: Database, config: Config) -> Dict:
                         logger.info(f"Found new video: {video_data['title']}")
 
                 # Update last checked time
-                db.update_channel_check_time(channel.channel_id)
+                db.update_channel_check_time(channel.id)
 
             except Exception as e:
                 error_msg = f"Error checking channel {channel.channel_name}: {str(e)}"
