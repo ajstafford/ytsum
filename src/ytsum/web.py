@@ -3,15 +3,27 @@
 import logging
 from datetime import datetime
 
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, abort
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from sqlalchemy.orm import joinedload
+from functools import wraps
 
 from .config import get_config
 from .database import Channel, Database, Video
 from .youtube import YouTubeClient
 
 logger = logging.getLogger(__name__)
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not current_user.is_authenticated or not current_user.is_admin:
+            logger.warning(f"Unauthorized access attempt to {request.endpoint} by user {current_user if current_user.is_authenticated else 'Anonymous'}")
+            flash("You do not have permission to access this page.", "danger")
+            return redirect(url_for("index"))
+        return f(*args, **kwargs)
+    return decorated_function
 
 
 def create_app(db_path=None):
@@ -312,6 +324,7 @@ def create_app(db_path=None):
 
     @app.route("/history")
     @login_required
+    @admin_required
     def history():
         """Run history page."""
         # TODO: Filter history by user if we implement user-specific runs
@@ -320,6 +333,7 @@ def create_app(db_path=None):
 
     @app.route("/run", methods=["POST"])
     @login_required
+    @admin_required
     def run_check():
         """Trigger a manual run."""
         try:
@@ -350,15 +364,18 @@ def create_app(db_path=None):
     def api_stats():
         """API endpoint for stats (for AJAX updates)."""
         stats = db.get_stats(user_id=current_user.id)
-        return jsonify(
-            {
-                "total_channels": stats["total_channels"],
-                "total_videos": stats["total_videos"],
-                "videos_with_transcripts": stats["videos_with_transcripts"],
-                "videos_with_summaries": stats["videos_with_summaries"],
-                "total_runs": stats["total_runs"],
-            }
-        )
+        
+        response_data = {
+            "total_channels": stats["total_channels"],
+            "total_videos": stats["total_videos"],
+            "videos_with_transcripts": stats["videos_with_transcripts"],
+            "videos_with_summaries": stats["videos_with_summaries"],
+        }
+        
+        if current_user.is_admin:
+            response_data["total_runs"] = stats["total_runs"]
+            
+        return jsonify(response_data)
 
     # Error handlers
     @app.errorhandler(404)

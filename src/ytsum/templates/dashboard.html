@@ -42,7 +42,7 @@
 </div>
 
 <!-- Last Run Info -->
-{% if stats.last_run %}
+{% if current_user.is_admin and stats.last_run %}
 <div class="alert alert-info">
     <i class="bi bi-info-circle"></i>
     Last run: {{ stats.last_run.run_timestamp.strftime('%Y-%m-%d %H:%M:%S') }} -

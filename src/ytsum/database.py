@@ -34,6 +34,7 @@ class User(UserMixin, Base):
     id = Column(Integer, primary_key=True)
     username = Column(String(64), unique=True, nullable=False, index=True)
     password_hash = Column(String(128))
+    is_admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     channels = relationship("Channel", back_populates="user")
@@ -196,6 +197,13 @@ class Database:
                     conn.execute(text("ALTER TABLE channels RENAME TO channels_old"))
                     conn.commit()
         
+        if "users" in inspector.get_table_names():
+            columns = [c["name"] for c in inspector.get_columns("users")]
+            if "is_admin" not in columns:
+                with self.engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
+                    conn.commit()
+        
         # Create all tables (including new 'channels' if we renamed the old one)
         Base.metadata.create_all(self.engine)
         
@@ -222,7 +230,11 @@ class Database:
     def add_user(self, username, password):
         """Add a new user."""
         with self.get_session() as session:
-            user = User(username=username)
+            # Check if this is the first user
+            user_count = session.query(User).count()
+            is_admin = (user_count == 0)
+
+            user = User(username=username, is_admin=is_admin)
             user.set_password(password)
             session.add(user)
             session.commit()
