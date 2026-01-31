@@ -16,17 +16,40 @@ Automated tool to fetch YouTube video transcripts from channels you follow and g
 - **AI Summarization**: Generate concise summaries with key takeaways using OpenRouter (Claude, GPT, Llama, etc.)
 - **Web Interface**: Modern web UI accessible from any device on your network
 - **Terminal UI**: Beautiful TUI for managing channels, viewing summaries, and checking run history
-- **Daily Automation**: Systemd service for automatic daily checks
+- **Telegram Notifications**: Get instant notifications when new video summaries are available
+- **Daily Automation**: Systemd service or Docker scheduler for automatic daily checks
 - **Run History**: Track all processing runs with detailed statistics
 - **SQLite Database**: Lightweight, file-based storage
 
 ## Architecture
 
+### Standalone Mode
 ```
 YouTube API → New Videos → Transcript Fetching → OpenRouter AI → Summaries → TUI Display
                                 ↓
                             SQLite Database
 ```
+
+### Docker Mode (3-Container Architecture)
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  ytsum-web   │     │ytsum-scheduler│    │ytsum-telegram│
+│  (Flask UI)  │     │ (automation)  │    │ (bot + queue)│
+└──────┬───────┘     └──────┬───────┘     └──────┬───────┘
+       │                    │                    │
+       └────────────────────┴────────────────────┘
+                            │
+                   ┌────────▼─────────┐
+                   │   SQLite DB      │
+                   │  + Queue Table   │
+                   └──────────────────┘
+```
+
+**High Availability Design:**
+- Web, scheduler, and Telegram bot run in separate containers
+- Each service can be restarted independently
+- Message queue ensures reliable notification delivery
+- Telegram bot runs 24/7 for instant user verification
 
 ## Requirements
 
@@ -202,6 +225,7 @@ All configuration is done via the `docker.env` file. Key settings:
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key | Required |
 | `OPENROUTER_API_KEY` | OpenRouter API key | Required |
 | `OPENROUTER_MODEL` | Model to use | `anthropic/claude-3.5-sonnet` |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token (optional) | - |
 | `SUMMARY_MAX_LENGTH` | Max summary length in words | `500` |
 | `MAX_KEY_POINTS` | Number of key points to extract | `5` |
 | `MAX_VIDEOS_PER_CHECK` | Max videos to check per channel | `50` |
@@ -211,6 +235,41 @@ After changing `docker.env`, restart the container:
 ```bash
 docker-compose restart
 ```
+
+### Telegram Notifications Setup (Optional)
+
+Get instant Telegram notifications when new video summaries are available:
+
+1. **Create a Telegram Bot**:
+   - Message [@BotFather](https://t.me/BotFather) on Telegram
+   - Send `/newbot` and follow instructions
+   - Copy the bot token (looks like `123456789:ABCdefGHI...`)
+
+2. **Configure ytsum**:
+   ```bash
+   # Add token to docker.env
+   echo "TELEGRAM_BOT_TOKEN=your_bot_token_here" >> docker.env
+   ```
+
+3. **Use the Scheduler Compose File** (includes Telegram service):
+   ```bash
+   docker-compose -f docker-compose.with-scheduler.yml up -d
+   ```
+
+4. **Link Your Account**:
+   - Open ytsum web interface → Settings → Telegram
+   - Click "Generate Verification Code"
+   - In Telegram, message your bot: `/verify YOUR_CODE`
+   - Your account is now linked!
+
+5. **Test Notifications**:
+   - Click "Send Test Message" in Settings
+   - You should receive a test message in Telegram
+
+**Architecture**: The Telegram bot runs in a separate container (`ytsum-telegram`) that:
+- Receives incoming messages (for account linking via `/verify`)
+- Processes outgoing messages from a queue
+- Runs 24/7 independently of web and scheduler
 
 ### Automated Scheduling with Docker
 
@@ -520,30 +579,54 @@ Add line:
 ```
 ytsum/
 ├── src/ytsum/
-│   ├── __init__.py       # Package initialization
-│   ├── cli.py            # CLI entry point and commands
-│   ├── config.py         # Configuration management
-│   ├── database.py       # SQLAlchemy models and DB operations
-│   ├── youtube.py        # YouTube API integration
-│   ├── summarizer.py     # OpenRouter/LLM integration
-│   ├── tui.py            # Textual TUI interface
-│   └── scheduler.py      # Daily automation logic
-├── data/                 # SQLite database (created at runtime)
-├── .env.example          # Example configuration
-├── requirements.txt      # Python dependencies
-├── pyproject.toml        # Package configuration
-├── install.sh            # Installation script
-├── ytsum.service         # Systemd service file
-└── README.md             # This file
+│   ├── __init__.py                # Package initialization
+│   ├── cli.py                     # CLI entry point and commands
+│   ├── config.py                  # Configuration management
+│   ├── database.py                # SQLAlchemy models and DB operations
+│   ├── youtube.py                 # YouTube API integration
+│   ├── summarizer.py              # OpenRouter/LLM integration
+│   ├── tui.py                     # Textual TUI interface
+│   ├── scheduler.py               # Daily automation logic
+│   ├── telegram.py                # Telegram bot class
+│   └── telegram_bot_service.py    # Telegram broker service
+├── src/ytsum/templates/
+│   ├── base.html                  # Base template
+│   ├── settings.html              # User settings (NEW)
+│   └── ...                        # Other templates
+├── data/                          # SQLite database (created at runtime)
+├── .env.example                   # Example configuration
+├── requirements.txt               # Python dependencies
+├── pyproject.toml                 # Package configuration
+├── install.sh                     # Installation script
+├── ytsum.service                  # Systemd service file
+├── ytsum-web.service              # Web interface systemd service
+├── ytsum.timer                    # Systemd timer for scheduling
+├── docker-compose.yml             # Docker: web only
+├── docker-compose.with-scheduler.yml  # Docker: web + scheduler + telegram
+└── README.md                      # This file
 ```
 
 ## Database Schema
 
-- **channels**: Followed YouTube channels
+### Core Tables
+- **youtube_channels**: Followed YouTube channels
 - **videos**: Discovered videos from channels
 - **transcripts**: Fetched video transcripts
 - **summaries**: AI-generated summaries with key points
 - **run_history**: Automated run history and statistics
+
+### User & Authentication
+- **users**: User accounts with authentication
+  - `telegram_chat_id`: Linked Telegram account
+  - `telegram_enabled`: Notification enabled flag
+  - `telegram_verification_code`: Temporary code for linking
+
+### Telegram Notifications
+- **telegram_queue**: Message queue for reliable delivery
+  - `chat_id`: Target Telegram chat
+  - `message`: Message content (Markdown/HTML)
+  - `status`: pending, sent, or failed
+  - `retry_count`: Failed delivery attempts
 
 Database location: `~/.local/share/ytsum/ytsum.db`
 
@@ -556,6 +639,7 @@ All configuration is done via environment variables in `~/.config/ytsum/.env`:
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key | Required |
 | `OPENROUTER_API_KEY` | OpenRouter API key | Required |
 | `OPENROUTER_MODEL` | Model to use | `anthropic/claude-3.5-sonnet` |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token for notifications | Optional |
 | `CHECK_SCHEDULE` | Daily check time (HH:MM) - only used with `ytsum schedule` daemon or cron, not systemd timer | `08:00` |
 | `SUMMARY_MAX_LENGTH` | Max summary length in words | `500` |
 | `MAX_KEY_POINTS` | Number of key points to extract | `5` |
@@ -710,7 +794,8 @@ Potential future enhancements (prioritized):
 - [ ] **Export summaries**: Export to Markdown, PDF, or plain text files
 
 ### Medium Priority
-- [ ] **Email/notification system**: Get notified when new summaries are available
+- [x] **Telegram notifications**: Get instant notifications when new summaries are available ✅
+- [ ] **Email notification system**: Alternative email-based notifications
 - [ ] **Custom prompt templates**: Define your own summarization prompts
 - [ ] **Multiple summary styles**: Choose between brief, detailed, or bullet-point formats
 - [ ] **Tags/categories**: Organize videos with custom tags
