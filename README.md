@@ -13,24 +13,16 @@ Automated tool to fetch YouTube video transcripts from channels you follow and g
 - **Multi-user Authentication**: Secure login and registration with private user data
 - **Channel Management**: Follow YouTube channels and automatically track new videos
 - **Transcript Fetching**: Automatically fetch transcripts for new videos
-- **AI Summarization**: Generate concise summaries with key takeaways using OpenRouter (Claude, GPT, Llama, etc.)
+- **AI Summarization**: Generate concise summaries with key takeaways using OpenRouter AI
 - **Web Interface**: Modern web UI accessible from any device on your network
-- **Terminal UI**: Beautiful TUI for managing channels, viewing summaries, and checking run history
 - **Telegram Notifications**: Get instant notifications when new video summaries are available
-- **Daily Automation**: Systemd service or Docker scheduler for automatic daily checks
+- **Daily Automation**: Docker scheduler runs every 30 minutes to check for new videos
 - **Run History**: Track all processing runs with detailed statistics
 - **SQLite Database**: Lightweight, file-based storage
 
 ## Architecture
 
-### Standalone Mode
-```
-YouTube API → New Videos → Transcript Fetching → OpenRouter AI → Summaries → TUI Display
-                                ↓
-                            SQLite Database
-```
-
-### Docker Mode (3-Container Architecture)
+### 3-Container Docker Architecture
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │  ytsum-web   │     │ytsum-scheduler│    │ytsum-telegram│
@@ -53,18 +45,11 @@ YouTube API → New Videos → Transcript Fetching → OpenRouter AI → Summari
 
 ## Requirements
 
-- Python 3.9 or higher
-- YouTube Data API v3 key (free from Google Cloud Console)
-- OpenRouter API key (from openrouter.ai)
-- Linux system
-
-**OR**
-
-- Docker and Docker Compose (for containerized deployment)
+- Docker and Docker Compose
 - YouTube Data API v3 key (free from Google Cloud Console)
 - OpenRouter API key (from openrouter.ai)
 
-## Docker Installation (Recommended)
+## Installation
 
 Running ytsum with Docker is the easiest way to get started. All dependencies are bundled in the container, and your data is automatically persisted.
 
@@ -99,7 +84,6 @@ Running ytsum with Docker is the easiest way to get started. All dependencies ar
 2. **OpenRouter API Key**:
    - Go to [OpenRouter](https://openrouter.ai/)
    - Sign up and get an API key
-   - Choose your preferred model (Claude 3.5 Sonnet recommended)
 
 ### Quick Start with Docker
 
@@ -291,23 +275,6 @@ This runs both the web interface and a scheduler that processes videos daily at 
 
 **Note:** SQLite handles concurrent reads well, but the web service and scheduler may occasionally encounter brief database locks during writes. This is normal SQLite behavior when multiple processes access the same database.
 
-#### Option 2: Host Cron
-
-Add a cron job on your host system to trigger processing:
-
-```bash
-# Edit your crontab
-crontab -e
-
-# Add this line to run daily at 8 AM
-# Replace /path/to/ytsum/ with the actual path to your ytsum directory
-0 8 * * * cd /path/to/ytsum && docker-compose run --rm ytsum ytsum run >> /var/log/ytsum-cron.log 2>&1
-```
-
-This uses `docker-compose run` which starts a new container, runs the command, and removes the container afterward.
-
-#### Option 3: Manual Processing
-
 Trigger processing manually whenever you want:
 
 ```bash
@@ -348,38 +315,6 @@ ports:
 docker-compose ps
 ```
 
-## Installation
-
-### Quick Install
-
-```bash
-# Clone or download
-cd /home/your-user/ytsum
-
-# Run installation script
-./install.sh
-```
-
-The installation script will:
-1. Create a Python virtual environment
-2. Install all dependencies
-3. Initialize configuration files
-4. Optionally set up systemd service
-
-### Manual Installation
-
-```bash
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install package
-pip install -e .
-
-# Initialize configuration
-ytsum init
-```
-
 ## Configuration
 
 ### Get API Keys
@@ -394,7 +329,6 @@ ytsum init
 2. **OpenRouter API Key**:
    - Go to [OpenRouter](https://openrouter.ai/)
    - Sign up and get an API key
-   - Choose your preferred model (Claude 3.5 Sonnet recommended)
 
 ### Edit Configuration
 
@@ -416,43 +350,9 @@ See `.env.example` for all available configuration options.
 
 ## Usage
 
-### Launch TUI Interface
-
-```bash
-ytsum ui
-```
-
-The TUI provides tabs for:
-- **Channels**: Add/remove channels to follow
-- **Videos**: Browse videos and view summaries
-- **History**: View run history and statistics
-- **Settings**: View current configuration
-
-Navigation:
-- `Tab` / `Shift+Tab`: Navigate between tabs
-- `q`: Quit
-- `d`: Toggle dark mode
-- `r`: Run manual check (from home screen)
-
 ### Launch Web Interface
 
-```bash
-ytsum web
-```
-
-The web interface will start on `http://0.0.0.0:5000` (accessible from any device on your network).
-
-**Custom Options:**
-```bash
-# Custom port
-ytsum web --port 8080
-
-# Localhost only (not accessible from network)
-ytsum web --host 127.0.0.1
-
-# Enable debug mode
-ytsum web --debug
-```
+The web interface runs inside the Docker container and is accessible on port 5000.
 
 **Access the Web UI:**
 - From the same device: `http://localhost:5000`
@@ -481,7 +381,7 @@ ytsum run
 # View configuration
 ytsum config
 
-# Run scheduler daemon (for systemd)
+# Run scheduler daemon
 ytsum schedule
 ```
 
@@ -495,84 +395,6 @@ You can add channels using various formats:
 Example channels to try:
 - `https://www.youtube.com/@fireship`
 - `https://www.youtube.com/@ThePrimeTimeagen`
-
-## Automation
-
-### Using Systemd (Recommended)
-
-The installation script can set up systemd for you. If you skipped it, manually install:
-
-#### Web Interface Service (Always Running)
-
-To keep the web interface running 24/7:
-
-```bash
-# Copy web service file
-sudo cp ytsum-web.service /etc/systemd/system/ytsum-web@.service
-
-# Reload systemd
-sudo systemctl daemon-reload
-
-# Enable and start the web service
-sudo systemctl enable ytsum-web@$(whoami).service
-sudo systemctl start ytsum-web@$(whoami).service
-
-# Check web service status
-sudo systemctl status ytsum-web@$(whoami).service
-
-# View web service logs
-sudo journalctl -u ytsum-web@$(whoami).service -f
-```
-
-The web interface will be available at `http://your-server-ip:5000` and will:
-- Start automatically on boot
-- Restart automatically if it crashes
-- Be accessible from any device on your network
-
-#### Scheduled Processing (Daily Timer)
-
-For automatic daily video checking and summarization:
-
-```bash
-# Copy service and timer files
-sudo cp ytsum.service /etc/systemd/system/ytsum@.service
-sudo cp ytsum.timer /etc/systemd/system/ytsum.timer
-
-# Reload systemd
-sudo systemctl daemon-reload
-
-# Enable service on boot (optional)
-sudo systemctl enable ytsum@$(whoami).service
-
-# Enable and start timer for automatic daily checks (runs daily at midnight)
-sudo systemctl enable ytsum.timer
-sudo systemctl start ytsum.timer
-
-# Check timer status
-sudo systemctl status ytsum.timer
-
-# View service logs
-sudo journalctl -u ytsum@$(whoami).service -f
-
-# View timer logs
-sudo journalctl -u ytsum.timer -f
-```
-
-**Note**: The systemd timer runs daily at **00:00 (midnight)** by default. The `CHECK_SCHEDULE` config variable only applies when running `ytsum schedule` manually or with cron.
-
-### Using Cron (Alternative)
-
-Add to crontab:
-
-```bash
-crontab -e
-```
-
-Add line:
-
-```
-0 8 * * * /home/your-user/ytsum/venv/bin/ytsum run
-```
 
 ## Project Structure
 
@@ -598,9 +420,9 @@ ytsum/
 ├── requirements.txt               # Python dependencies
 ├── pyproject.toml                 # Package configuration
 ├── install.sh                     # Installation script
-├── ytsum.service                  # Systemd service file
-├── ytsum-web.service              # Web interface systemd service
-├── ytsum.timer                    # Systemd timer for scheduling
+├── ytsum.service                  # Service file (for non-Docker installs)
+├── ytsum-web.service              # Web service file (for non-Docker installs)
+├── ytsum.timer                    # Timer file (for non-Docker installs)
 ├── docker-compose.yml             # Docker: web only
 ├── docker-compose.with-scheduler.yml  # Docker: web + scheduler + telegram
 └── README.md                      # This file
@@ -640,7 +462,7 @@ All configuration is done via environment variables in `~/.config/ytsum/.env`:
 | `OPENROUTER_API_KEY` | OpenRouter API key | Required |
 | `OPENROUTER_MODEL` | Model to use | `anthropic/claude-3.5-sonnet` |
 | `TELEGRAM_BOT_TOKEN` | Telegram bot token for notifications | Optional |
-| `CHECK_SCHEDULE` | Daily check time (HH:MM) - only used with `ytsum schedule` daemon or cron, not systemd timer | `08:00` |
+| `CHECK_SCHEDULE` | Daily check time (HH:MM) - only used with manual scheduling | `08:00` |
 | `SUMMARY_MAX_LENGTH` | Max summary length in words | `500` |
 | `MAX_KEY_POINTS` | Number of key points to extract | `5` |
 | `MAX_VIDEOS_PER_CHECK` | Max videos to check per channel | `50` |
@@ -661,13 +483,6 @@ ytsum config
 
 Some videos don't have transcripts enabled. This is normal and will be logged as a warning.
 
-### OpenRouter Costs
-
-OpenRouter charges per token. Claude 3.5 Sonnet is recommended for quality but costs around $3/$15 per million tokens (input/output). Consider:
-- Using cheaper models like `meta-llama/llama-3.1-70b-instruct`
-- Limiting `MAX_VIDEOS_PER_CHECK` and `MAX_KEY_POINTS`
-- Reducing `SUMMARY_MAX_LENGTH`
-
 Check your usage at [OpenRouter Dashboard](https://openrouter.ai/dashboard)
 
 ### Database Issues
@@ -681,47 +496,28 @@ rm ~/.local/share/ytsum/ytsum.db
 ytsum init
 ```
 
-### Systemd Service Not Running
+### Docker Scheduler Not Running
+
+If using Docker Compose with scheduler and automated checks aren't happening:
 
 ```bash
-# Check service status
-sudo systemctl status ytsum@$(whoami).service
+# Check scheduler container logs
+docker-compose -f docker-compose.with-scheduler.yml logs -f scheduler
 
-# View logs
-sudo journalctl -u ytsum@$(whoami).service -f
-
-# Restart service
-sudo systemctl restart ytsum@$(whoami).service
+# Restart scheduler
+docker-compose -f docker-compose.with-scheduler.yml restart scheduler
 ```
 
-### Systemd Timer Not Running
+### Manual Scheduler Issues
 
-If automated daily checks aren't happening:
+If running `ytsum schedule` manually:
 
 ```bash
-# Check timer status
-sudo systemctl status ytsum.timer
+# Run scheduler in foreground to see logs
+ytsum schedule
 
-# Should show: "Active: active (waiting)"
-# If "Active: inactive (dead)", enable and start it:
-sudo systemctl enable ytsum.timer
-sudo systemctl start ytsum.timer
-
-# View next scheduled run
-sudo systemctl list-timers ytsum.timer
-
-# View timer logs
-sudo journalctl -u ytsum.timer -f
-
-# View service logs (when timer triggers)
-sudo journalctl -u ytsum@$(whoami).service -f
-```
-
-**Note**: The timer runs daily at **00:00 (midnight)**. To change the schedule, edit `/etc/systemd/system/ytsum.timer` and modify the `OnCalendar` line, then reload:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart ytsum.timer
-```
+# Check if another instance is running
+ps aux | grep "ytsum schedule"
 
 ## Development
 
@@ -746,15 +542,7 @@ black src/
 flake8 src/
 ```
 
-## Available Models on OpenRouter
 
-Popular options:
-- `anthropic/claude-3.5-sonnet` - Best quality, higher cost
-- `openai/gpt-4-turbo` - Great quality, moderate cost
-- `meta-llama/llama-3.1-70b-instruct` - Good quality, lower cost
-- `google/gemini-pro` - Free tier available
-
-See full list at [OpenRouter Models](https://openrouter.ai/models)
 
 ## Privacy & Data
 
