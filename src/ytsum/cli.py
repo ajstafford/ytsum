@@ -1,6 +1,7 @@
 """Command-line interface for ytsum."""
 
 import argparse
+import asyncio
 import logging
 import sys
 from pathlib import Path
@@ -201,7 +202,7 @@ def cmd_schedule(args):
         sys.exit(1)
 
     console.print(
-        f"[bold cyan]Starting scheduler (daily at {config.check_schedule})...[/bold cyan]"
+        "[bold cyan]Starting scheduler (runs every 30 minutes)...[/bold cyan]"
     )
     console.print("Press Ctrl+C to stop")
 
@@ -246,6 +247,30 @@ def cmd_web(args):
         run_web_server(host=host, port=port, debug=debug)
     except KeyboardInterrupt:
         console.print("\n[yellow]Web server stopped[/yellow]")
+
+
+def cmd_telegram_bot(args):
+    """Run the Telegram bot service."""
+    from .telegram_bot_service import run_telegram_bot_service
+
+    config = get_config()
+
+    # Validate config
+    is_valid, errors = config.validate()
+    if not is_valid:
+        console.print("[bold red]Configuration errors:[/bold red]")
+        for error in errors:
+            console.print(f"  [red]✗[/red] {error}")
+        console.print("\nRun 'ytsum init' to set up configuration.")
+        sys.exit(1)
+
+    console.print("[bold cyan]Starting Telegram bot service...[/bold cyan]")
+    console.print("Press Ctrl+C to stop")
+
+    try:
+        asyncio.run(run_telegram_bot_service())
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Telegram bot stopped[/yellow]")
 
 
 def main():
@@ -303,6 +328,11 @@ def main():
         help="Enable debug mode",
     )
 
+    # telegram-bot command
+    parser_telegram_bot = subparsers.add_parser(
+        "telegram-bot", help="Run Telegram bot service"
+    )
+
     args = parser.parse_args()
 
     # Setup logging
@@ -328,6 +358,8 @@ def main():
         cmd_schedule(args)
     elif args.command == "web":
         cmd_web(args)
+    elif args.command == "telegram-bot":
+        cmd_telegram_bot(args)
     else:
         parser.print_help()
         sys.exit(1)

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - ytsum{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="d-flex align-items-center mb-4">
+            <h1 class="h2 mb-0">Settings</h1>
+        </div>
+
+        <!-- Telegram Settings -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white py-3">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-telegram text-primary me-2"></i>
+                    Telegram Notifications
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if telegram_enabled %}
+                    {% if user.telegram_enabled and user.telegram_chat_id %}
+                        <div class="alert alert-success">
+                            <i class="bi bi-check-circle-fill me-2"></i>
+                            <strong>Telegram account linked!</strong><br>
+                            <small>Linked on: {{ user.telegram_linked_at.strftime('%Y-%m-%d %H:%M') if user.telegram_linked_at else 'Unknown' }}</small>
+                        </div>
+                        <p class="text-muted">
+                            You will receive Telegram notifications when new video summaries are available for channels you follow.
+                        </p>
+                        <form method="POST" action="{{ url_for('test_telegram_message') }}" class="mt-3 d-inline">
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-send me-2"></i>
+                                Send Test Message
+                            </button>
+                        </form>
+                        <form method="POST" action="{{ url_for('unlink_telegram') }}" class="mt-3 d-inline ms-2">
+                            <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Are you sure you want to unlink your Telegram account?');">
+                                <i class="bi bi-x-circle me-2"></i>
+                                Unlink Telegram Account
+                            </button>
+                        </form>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle-fill me-2"></i>
+                            <strong>Link your Telegram account</strong> to receive notifications when new video summaries are available.
+                        </div>
+                        
+                        <h6 class="mt-4 mb-3">How to link:</h6>
+                        <ol class="text-muted">
+                            <li>Click the button below to generate a verification code</li>
+                            <li>Open Telegram and find your bot</li>
+                            <li>Send the code to your bot</li>
+                            <li>Your account will be automatically linked</li>
+                        </ol>
+
+                        {% if user.telegram_verification_code %}
+                            <div class="alert alert-warning mt-3">
+                                <strong>Your verification code:</strong>
+                                <div class="fs-3 font-monospace my-2">{{ user.telegram_verification_code }}</div>
+                                <small>This code will remain valid until you generate a new one or successfully link.</small>
+                            </div>
+                        {% endif %}
+
+                        <form method="POST" action="{{ url_for('generate_telegram_code') }}" class="mt-3">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-key me-2"></i>
+                                {% if user.telegram_verification_code %}Generate New Code{% else %}Generate Verification Code{% endif %}
+                            </button>
+                        </form>
+                    {% endif %}
+                {% else %}
+                    <div class="alert alert-secondary">
+                        <i class="bi bi-slash-circle me-2"></i>
+                        Telegram notifications are not enabled. The administrator needs to configure the Telegram bot token.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Account Info -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-white py-3">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-person text-primary me-2"></i>
+                    Account Information
+                </h5>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless">
+                    <tr>
+                        <td class="text-muted" style="width: 150px;">Username:</td>
+                        <td><strong>{{ user.username }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Account Type:</td>
+                        <td>
+                            {% if user.is_admin %}
+                                <span class="badge bg-primary">Administrator</span>
+                            {% else %}
+                                <span class="badge bg-secondary">User</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted">Created:</td>
+                        <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else 'Unknown' }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

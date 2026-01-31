@@ -9,8 +9,9 @@ from sqlalchemy.orm import joinedload
 from functools import wraps
 
 from .config import get_config
-from .database import Channel, Database, Video
+from .database import YouTubeChannel, Database, Video, User
 from .youtube import YouTubeClient
+from .telegram import generate_verification_code
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,8 @@ def create_app(db_path=None):
 
     # Initialize database
     db = Database(db_path or config.database_path)
+
+    # Telegram bot runs in a separate container, no need to start here
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -128,7 +131,13 @@ def create_app(db_path=None):
             return redirect(url_for("channels"))
 
         try:
-            yt_client = YouTubeClient(config.youtube_api_key)
+            yt_client = YouTubeClient(
+                api_key=config.youtube_api_key,
+                proxy_list=config.proxy_list,
+                proxy_rate_limit=config.proxy_rate_limit,
+                proxy_max_retries=config.proxy_max_retries,
+                proxy_retry_delay=config.proxy_retry_delay,
+            )
 
             # Extract channel ID if it's a URL
             channel_id = yt_client.extract_channel_id(channel_input)
@@ -191,9 +200,10 @@ def create_app(db_path=None):
         with db.get_session() as session:
             query = (
                 session.query(Video)
-                .join(Video.channel)
-                .filter(Channel.user_id == current_user.id)
-                .options(joinedload(Video.channel), joinedload(Video.summary))
+                .join(Video.youtube_channel)
+                .join(YouTubeChannel.users)
+                .filter(User.id == current_user.id)
+                .options(joinedload(Video.youtube_channel), joinedload(Video.summary))
                 .order_by(Video.published_at.desc())
             )
 
@@ -202,12 +212,12 @@ def create_app(db_path=None):
                 search_pattern = f"%{search}%"
                 query = query.filter(
                     (Video.title.ilike(search_pattern)) |
-                    (Video.channel.has(Channel.channel_name.ilike(search_pattern)))
+                    (Video.youtube_channel.has(YouTubeChannel.channel_name.ilike(search_pattern)))
                 )
 
             if channel_filter != "all":
                 # Ensure the filtered channel belongs to the user (implicit via above join, but good to check)
-                query = query.filter(Video.channel_id == int(channel_filter))
+                query = query.filter(Video.youtube_channel_id == int(channel_filter))
 
             if has_summary == "yes":
                 query = query.filter(Video.summary.has())
@@ -239,9 +249,10 @@ def create_app(db_path=None):
         with db.get_session() as session:
             video = (
                 session.query(Video)
-                .join(Video.channel)
-                .filter(Channel.user_id == current_user.id)
-                .options(joinedload(Video.channel), joinedload(Video.summary))
+                .join(Video.youtube_channel)
+                .join(YouTubeChannel.users)
+                .filter(User.id == current_user.id)
+                .options(joinedload(Video.youtube_channel), joinedload(Video.summary))
                 .filter(Video.id == video_id)
                 .first()
             )
@@ -256,7 +267,7 @@ def create_app(db_path=None):
                 "title": video.title,
                 "url": video.url,
                 "published_at": video.published_at,
-                "channel_name": video.channel.channel_name,
+                "channel_name": video.youtube_channel.channel_name,
                 "has_summary": video.summary is not None,
             }
 
@@ -289,10 +300,10 @@ def create_app(db_path=None):
             if summary is None:
                 continue
 
-            channel_name = video.channel.channel_name
+            channel_name = video.youtube_channel.channel_name
             if channel_name not in grouped_data:
                 grouped_data[channel_name] = {
-                    "channel_id": video.channel.id,
+                    "channel_id": video.youtube_channel.id,
                     "videos": [],
                 }
 
@@ -376,6 +387,71 @@ def create_app(db_path=None):
             response_data["total_runs"] = stats["total_runs"]
             
         return jsonify(response_data)
+
+    @app.route("/settings")
+    @login_required
+    def settings():
+        """User settings page."""
+        config = get_config()
+        return render_template(
+            "settings.html",
+            telegram_enabled=config.telegram_enabled,
+            user=current_user
+        )
+
+    @app.route("/settings/telegram/generate-code", methods=["POST"])
+    @login_required
+    def generate_telegram_code():
+        """Generate a new Telegram verification code."""
+        code = generate_verification_code()
+        db.set_telegram_verification_code(current_user.id, code)
+        flash(f"Your Telegram verification code is: {code}", "info")
+        flash("Open Telegram and message this code to your bot to link your account.", "info")
+        return redirect(url_for("settings"))
+
+    @app.route("/settings/telegram/unlink", methods=["POST"])
+    @login_required
+    def unlink_telegram():
+        """Unlink Telegram account."""
+        if db.unlink_telegram(current_user.id):
+            flash("Telegram account unlinked successfully.", "success")
+        else:
+            flash("Failed to unlink Telegram account.", "danger")
+        return redirect(url_for("settings"))
+
+    @app.route("/settings/telegram/test-message", methods=["POST"])
+    @login_required
+    def test_telegram_message():
+        """Send a test Telegram message to verify notifications are working."""
+        user = current_user
+        
+        if not user.telegram_enabled or not user.telegram_chat_id:
+            flash("Telegram is not configured. Please link your Telegram account first.", "warning")
+            return redirect(url_for("settings"))
+        
+        try:
+            message = "🧪 Test message from ytsum! Your Telegram notifications are working correctly."
+            
+            # Add message to the queue - bot runs in separate container
+            db.add_telegram_message_to_queue(
+                chat_id=user.telegram_chat_id,
+                message=message,
+                user_id=user.id
+            )
+            flash("Test message queued successfully! Check your Telegram.", "success")
+        except Exception as e:
+            logger.error(f"Failed to queue test Telegram message: {e}")
+            flash(f"Failed to queue test message: {str(e)}", "danger")
+        
+        return redirect(url_for("settings"))
+
+    @app.route("/telegram/webhook", methods=["POST"])
+    def telegram_webhook():
+        """Handle Telegram webhook updates."""
+        # Telegram bot runs in separate container - webhook processed there
+        update_data = request.get_json()
+        logger.info(f"Received Telegram webhook: {update_data}")
+        return "OK", 200
 
     # Error handlers
     @app.errorhandler(404)

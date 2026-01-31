@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   ytsum-web:
     build: .
@@ -28,6 +26,21 @@ services:
     env_file:
       - docker.env
     command: ["ytsum", "schedule"]
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    depends_on:
+      - ytsum-web
+
+  ytsum-telegram:
+    build: .
+    container_name: ytsum-telegram
+    volumes:
+      # Share the same data volume for database access
+      - ytsum-data:/data
+    env_file:
+      - docker.env
+    command: ["ytsum", "telegram-bot"]
     restart: unless-stopped
     healthcheck:
       disable: true

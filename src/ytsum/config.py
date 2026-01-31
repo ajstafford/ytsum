@@ -79,6 +79,25 @@ class Config:
             os.getenv("DAYS_TO_LOOK_BACK", "7")
         )  # How far back to check for new videos
 
+        # Proxy Configuration (optional, vendor-agnostic)
+        # Supports single proxy URL or multiple for rotation
+        proxy_url = os.getenv("PROXY_URL", "")
+        proxy_urls = os.getenv("PROXY_URLS", "")
+        self.proxy_list = []
+        if proxy_urls:
+            self.proxy_list = [url.strip() for url in proxy_urls.split(",") if url.strip()]
+        elif proxy_url:
+            self.proxy_list = [proxy_url]
+
+        # Rate limiting and retry configuration for proxy usage
+        self.proxy_rate_limit = float(os.getenv("PROXY_RATE_LIMIT", "0.5"))
+        self.proxy_max_retries = int(os.getenv("PROXY_MAX_RETRIES", "3"))
+        self.proxy_retry_delay = float(os.getenv("PROXY_RETRY_DELAY", "2.0"))
+
+        # Telegram Bot Configuration
+        self.telegram_bot_token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+        self.telegram_enabled = bool(self.telegram_bot_token)
+
     def validate(self) -> tuple[bool, list[str]]:
         """Validate configuration.
 
@@ -112,6 +131,11 @@ class Config:
             "max_key_points": self.max_key_points,
             "max_videos_per_check": self.max_videos_per_check,
             "days_to_look_back": self.days_to_look_back,
+            "proxy_enabled": len(self.proxy_list) > 0,
+            "proxy_count": len(self.proxy_list),
+            "proxy_rate_limit": self.proxy_rate_limit,
+            "proxy_max_retries": self.proxy_max_retries,
+            "telegram_enabled": self.telegram_enabled,
         }
 
     @staticmethod
@@ -159,6 +183,32 @@ MAX_KEY_POINTS=5
 # Video processing settings
 MAX_VIDEOS_PER_CHECK=50
 DAYS_TO_LOOK_BACK=7
+
+# Proxy Configuration (Optional - for avoiding IP blocks)
+# Format: protocol://username:password@host:port
+# Supports any HTTP/HTTPS proxy provider (Webshare, Bright Data, Oxylabs, etc.)
+# 
+# Option 1: Single proxy
+# PROXY_URL=http://username:password@proxy.webshare.io:8080
+#
+# Option 2: Multiple proxies for rotation (comma-separated)
+# PROXY_URLS=http://proxy1.webshare.io:8080,http://proxy2.webshare.io:8080
+#
+# Recommended: Webshare.io (10 free proxies, 1GB/month)
+# Sign up: https://www.webshare.io/
+#
+# Rate limiting (seconds between requests, default: 0.5)
+# PROXY_RATE_LIMIT=0.5
+#
+# Max retries on failure (default: 3)
+# PROXY_MAX_RETRIES=3
+#
+        # Retry delay in seconds (default: 2.0)
+        # PROXY_RETRY_DELAY=2.0
+
+# Telegram Bot Configuration (Optional)
+# Get bot token from @BotFather on Telegram
+# TELEGRAM_BOT_TOKEN=your_bot_token_here
 """
 
         output_path.write_text(content)

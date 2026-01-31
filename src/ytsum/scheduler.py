@@ -36,8 +36,14 @@ def check_and_process(db: Database, config: Config) -> Dict:
     videos_processed = 0
 
     try:
-        # Initialize clients
-        yt_client = YouTubeClient(config.youtube_api_key)
+        # Initialize clients with proxy support
+        yt_client = YouTubeClient(
+            api_key=config.youtube_api_key,
+            proxy_list=config.proxy_list,
+            proxy_rate_limit=config.proxy_rate_limit,
+            proxy_max_retries=config.proxy_max_retries,
+            proxy_retry_delay=config.proxy_retry_delay,
+        )
         summarizer = Summarizer(
             config.openrouter_api_key,
             config.openrouter_model,
@@ -63,7 +69,7 @@ def check_and_process(db: Database, config: Config) -> Dict:
                 for video_data in videos:
                     result = db.add_video(
                         video_id=video_data["id"],
-                        channel_id=channel.id,
+                        youtube_channel_id=channel.id,
                         title=video_data["title"],
                         published_at=video_data["published_at"],
                         url=video_data["url"],
@@ -100,11 +106,19 @@ def check_and_process(db: Database, config: Config) -> Dict:
                     error_msg = f"No transcript available for: {video.title}"
                     logger.warning(error_msg)
                     errors.append(error_msg)
+                    # Increment failed attempts
+                    failed_count = db.increment_video_failed_attempts(video.id)
+                    if failed_count >= 10:
+                        logger.warning(f"Video {video.title} has failed {failed_count} times, giving up")
 
             except Exception as e:
                 error_msg = f"Error fetching transcript for {video.title}: {str(e)}"
                 logger.error(error_msg)
                 errors.append(error_msg)
+                # Increment failed attempts
+                failed_count = db.increment_video_failed_attempts(video.id)
+                if failed_count >= 10:
+                    logger.warning(f"Video {video.title} has failed {failed_count} times, giving up")
 
         # Step 3: Generate summaries for videos with transcripts but no summaries
         logger.info("Generating summaries...")
@@ -135,6 +149,41 @@ def check_and_process(db: Database, config: Config) -> Dict:
 
                 videos_processed += 1
                 logger.info(f"Summary generated successfully")
+
+                # Send Telegram notifications to users following this channel
+                try:
+                    users_to_notify = db.get_users_for_telegram_notification(
+                        video.youtube_channel_id
+                    )
+                    
+                    # Format duration
+                    duration_str = video.duration if video.duration else "N/A"
+                    
+                    for user in users_to_notify:
+                        if user.telegram_chat_id:
+                            # Create message text
+                            message = (
+                                f"🎥 <b>{video.title}</b>\n"
+                                f"📺 {video.youtube_channel.channel_name}\n"
+                                f"⏱ {duration_str}\n"
+                                f"\n"
+                                f"🔗 <a href='{video.url}'>Watch on YouTube</a>\n"
+                                f"📝 <a href='/summary/{video.id}'>View Summary</a>"
+                            )
+                            
+                            # Add to queue
+                            db.add_telegram_message_to_queue(
+                                chat_id=user.telegram_chat_id,
+                                message=message,
+                            )
+                            
+                    if users_to_notify:
+                        logger.info(
+                            f"Telegram notifications queued for {len(users_to_notify)} "
+                            f"users for video: {video.title}"
+                        )
+                except Exception as e:
+                    logger.error(f"Error sending Telegram notifications: {e}", exc_info=True)
 
             except Exception as e:
                 error_msg = f"Error summarizing {video.title}: {str(e)}"
@@ -180,12 +229,10 @@ def run_scheduler(db: Database, config: Config):
         db: Database instance.
         config: Configuration instance.
     """
-    logger.info(f"Scheduler started. Will run daily at {config.check_schedule}")
+    logger.info("Scheduler started. Will run every 30 minutes")
 
-    # Schedule the job
-    schedule.every().day.at(config.check_schedule).do(
-        lambda: check_and_process(db, config)
-    )
+    # Schedule the job to run every 30 minutes
+    schedule.every(30).minutes.do(lambda: check_and_process(db, config))
 
     # Also run immediately on startup if there's pending work
     videos_without_summaries = db.get_videos_without_summaries()
